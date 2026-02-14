@@ -1,0 +1,43 @@
+#ifndef VIDEODECODER_H
+#define VIDEODECODER_H
+
+extern "C" {
+#include <libavcodec/avcodec.h>
+#include <libavformat/avformat.h>
+#include <libswscale/swscale.h>
+#include <libavutil/frame.h>
+#include <libavutil/imgutils.h>
+}
+#include "packetqueue.h"
+#include "framequeue.h"
+
+enum class DecodeResult {
+    TryAgain,      // 没 packet / EAGAIN
+    FrameReady,   // 成功解出 ≥1 帧
+    Drained,      // flush 后 decoder 已空
+    QueueClosed,  // packet queue 已关闭
+    Error
+};
+
+class VideoDecoder
+{
+public:
+    VideoDecoder(AVCodecParameters*);
+    ~VideoDecoder();
+
+    bool openDecoder();
+    void close();
+
+    DecodeResult send(const PacketData& pkt);
+    DecodeResult receive(VideoFrame& out);
+private:
+    AVCodecParameters* params;
+    AVCodecContext* codecCtx = nullptr;
+    AVFrame* frame = nullptr;
+    SwsContext* swsCtx = nullptr;
+    int width = 0;
+    int height = 0;
+    uint8_t* nv12Buffer = nullptr;
+};
+
+#endif // VIDEODECODER_H

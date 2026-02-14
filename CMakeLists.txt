@@ -25,8 +25,10 @@ qt_add_executable(QFFPlayer
     VideoWidget/videowidget.cpp VideoWidget/videowidget.h
     Decode/ffmpeg.h Decode/ffmpeg.cpp
     Decode/packetqueue.h Decode/packetqueue.cpp
-    Decode/player.h Decode/player.cpp
+    Decode/videoplayer.h Decode/videoplayer.cpp
     Decode/framequeue.h Decode/framequeue.cpp
+    Decode/demuxer.h Decode/demuxer.cpp
+    Decode/videodecoder.h Decode/videodecoder.cpp
 )
 
 target_link_libraries(QFFPlayer

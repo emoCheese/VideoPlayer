@@ -3,6 +3,8 @@
 
 #include "framequeue.h"
 #include "packetqueue.h"
+#include "videodecoder.h"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -12,14 +14,6 @@ extern "C" {
 }
 
 #include <string>
-
-enum class DecodeResult {
-    TryAgain,      // 没 packet / EAGAIN
-    FrameReady,   // 成功解出 ≥1 帧
-    Drained,      // flush 后 decoder 已空
-    QueueClosed,  // packet queue 已关闭
-    Error
-};
 
 class FFmpeg
 {
@@ -62,9 +56,8 @@ private:
     uint8_t* nv12Buffer = nullptr;
 
     int videoStream = -1;
-    PacketQueue videoPktQueue;   // 核心
+    PacketQueue videoPktQueue;
     FrameQueue videoFrameQueue;
-
 
     // =====================
     // 音频 to do

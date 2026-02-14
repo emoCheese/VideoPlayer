@@ -1,4 +1,5 @@
 #include "ffmpeg.h"
+#include "videodecoder.h"
 
 
 extern "C" {
