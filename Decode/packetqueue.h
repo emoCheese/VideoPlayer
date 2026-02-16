@@ -33,9 +33,17 @@ struct PacketData {
     int serial;
 };
 
-struct QueueClosed {};   // abort_request
-struct QueueEmpty {};    // 非阻塞但无数据
-using GetResult = std::variant<PacketData, QueueClosed, QueueEmpty>;
+struct PacketQueueClosed {};   // abort_request
+struct PacketQueueEmpty {};    // 非阻塞但无数据
+using GetResult = std::variant<PacketData, PacketQueueClosed, PacketQueueEmpty>;
+
+struct PacketQueueFull {};
+
+using PutResult = std::variant<
+    std::monostate, // 成功
+    PacketQueueFull,
+    PacketQueueClosed
+    >;
 
 class PacketQueue {
 public:
@@ -45,12 +53,13 @@ public:
 
     ~PacketQueue() noexcept;
 
-    // put：接管 pkt 所有权
-    bool put(PacketPtr pkt) noexcept;
+    // put：接管 pkt 所有权 不创建 pkt
+    PutResult put(PacketPtr pkt, bool block = true) noexcept;
 
     // block = true 等价 ffplay 的 block
     GetResult get(bool block = true) noexcept;
 
+    // 立刻丢弃队列里还没被消费的数据
     void flush() noexcept;
 
     void close() noexcept;

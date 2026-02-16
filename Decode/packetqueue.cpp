@@ -11,22 +11,30 @@ PacketQueue::~PacketQueue() noexcept {
     flush();
 }
 
-bool PacketQueue::put(PacketPtr pkt) noexcept {
-    if (!pkt) return false;
+PutResult PacketQueue::put(PacketPtr pkt, bool block) noexcept {
+    std::unique_lock lock(mutex_);
+    if (pkt) {
+        // 🔒 阻塞等待：对齐 ffplay 行为
+        if (block) {
+            cond_.wait(lock, [&]() {
+                return closed_ ||
+                       (queue_.size() < max_packets_ &&
+                        total_size_ + pkt->size < max_bytes_);
+            });
+        }
+        if (closed_) return PacketQueueClosed{};
+        if (queue_.size() >= max_packets_ ||
+            total_size_ + pkt->size >= max_bytes_) {
+            return PacketQueueFull{};
+        }
+        total_size_ += pkt->size;
+    }
 
-    std::unique_lock<std::mutex> lock(mutex_);
-    // 🔒 阻塞等待：对齐 ffplay 行为
-    cond_.wait(lock, [&]() {
-        if (closed_) return true;
-        return queue_.size() < max_packets_ && total_size_ + pkt->size < max_bytes_;
-    });
-    if (closed_) return false;
     queue_.push_back({ std::move(pkt), serial_ });
-
     ++size_;
-    total_size_ += queue_.back().pkt->size;
+
     cond_.notify_all(); // 唤醒 get / put
-    return true;
+    return std::monostate{};
 }
 
 GetResult PacketQueue::get(bool block) noexcept {
@@ -40,8 +48,8 @@ GetResult PacketQueue::get(bool block) noexcept {
 
     if (queue_.empty()) {
         return closed_
-                   ? GetResult{QueueClosed{}}
-                   : GetResult{QueueEmpty{}};
+                   ? GetResult{PacketQueueClosed{}}
+                   : GetResult{PacketQueueEmpty{}};
     }
 
     PacketData data = {

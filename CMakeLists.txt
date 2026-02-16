@@ -29,6 +29,12 @@ qt_add_executable(QFFPlayer
     Decode/framequeue.h Decode/framequeue.cpp
     Decode/demuxer.h Decode/demuxer.cpp
     Decode/videodecoder.h Decode/videodecoder.cpp
+
+    Decode/videoclock.h Decode/videoclock.cpp
+    Decode/platform_gl.h
+
+    Decode/RenderCore.h
+    Decode/videorendergl.h Decode/videorendergl.cpp
 )
 
 target_link_libraries(QFFPlayer
@@ -43,6 +49,7 @@ target_link_libraries(QFFPlayer
 target_include_directories(QFFPlayer
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/VideoWidget
+    ${CMAKE_CURRENT_SOURCE_DIR}/Decode
 )
 
 message(STATUS "FFmpeg include dirs: ${FFMPEG_INCLUDE_DIRS}")

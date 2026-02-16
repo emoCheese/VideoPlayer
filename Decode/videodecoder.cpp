@@ -1,67 +1,53 @@
 #include "videodecoder.h"
 
-VideoDecoder::VideoDecoder(AVCodecParameters *par)
-    : params(par)
-{}
+VideoDecoder::~VideoDecoder() { close(); }
 
-VideoDecoder::~VideoDecoder()
+bool VideoDecoder::open(const AVStream* stream)
 {
+    if (!stream || !stream->codecpar)
+        return false;
     close();
-}
 
-bool VideoDecoder::openDecoder()
-{
-    const AVCodec* codec = avcodec_find_decoder(params->codec_id);
-    if (!codec) {
-        close();
+    streamIndex_ = stream->index;
+    timeBase_    = stream->time_base;
+
+    const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
+    if (!codec)
         return false;
-    }
-    // 创建解码器上下文s
+
     codecCtx = avcodec_alloc_context3(codec);
-    if (!codecCtx) {
-        close();
+    if (!codecCtx)
         return false;
-    }
-    // 从流参数复制配置
-    if (avcodec_parameters_to_context(codecCtx, params) < 0) {
-        close();
-        return false;
-    }
 
-    // 打开解码器
-    if (avcodec_open2(codecCtx, codec, nullptr) < 0) {
-        close();
+    if (avcodec_parameters_to_context(codecCtx, stream->codecpar) < 0)
         return false;
-    }
 
-    // 初始化帧
+    if (avcodec_open2(codecCtx, codec, nullptr) < 0)
+        return false;
+
     frame = av_frame_alloc();
-    if (!frame) {
-        close();
+    if (!frame)
         return false;
-    }
 
-    // 获取帧尺寸
-    width = codecCtx->width;
+    width  = codecCtx->width;
     height = codecCtx->height;
+    srcPixFmt = codecCtx->pix_fmt;
 
-    // 创建转换上下文 (YUV420P -> NV12)
     swsCtx = sws_getContext(
-        width, height,  codecCtx->pix_fmt, // AV_PIX_FMT_YUV420P
+        width, height, srcPixFmt,
         width, height, AV_PIX_FMT_NV12,
-        SWS_BILINEAR, nullptr, nullptr, nullptr
+        SWS_BILINEAR,
+        nullptr, nullptr, nullptr
         );
-    if (!swsCtx) {
-        close();
+    if (!swsCtx)
         return false;
-    }
 
-    // 分配NV12缓冲区
-    nv12Buffer = (uint8_t*)av_malloc(width * height * 3 / 2);
-    if (!nv12Buffer) {
-        close();
+    nv12Buffer = static_cast<uint8_t*>(
+        av_malloc(width * height * 3 / 2)
+        );
+    if (!nv12Buffer)
         return false;
-    }
+
     return true;
 }
 
@@ -99,7 +85,6 @@ DecodeResult VideoDecoder::send(const PacketData &pkt)
         return DecodeResult::Error;
     return DecodeResult::FrameReady;
 }
-
 DecodeResult VideoDecoder::receive(VideoFrame &out)
 {
     int ret = avcodec_receive_frame(codecCtx, frame);
@@ -109,12 +94,6 @@ DecodeResult VideoDecoder::receive(VideoFrame &out)
         return DecodeResult::Drained;
     if (ret < 0)
         return DecodeResult::Error;
-
-    // sws + fill VideoFrame
-    out.width  = width;
-    out.height = height;
-    out.format = AV_PIX_FMT_NV12;
-    out.pts    = frame->best_effort_timestamp;
 
     uint8_t* dst[2] = {
         nv12Buffer,
@@ -132,8 +111,14 @@ DecodeResult VideoDecoder::receive(VideoFrame &out)
         linesize
         );
 
-    out.data.resize(width * height * 3 / 2);
-    memcpy(out.data.data(), nv12Buffer, out.data.size());
+    out.width  = width;
+    out.height = height;
+    out.format = AV_PIX_FMT_NV12;
+    out.pts    = frame->best_effort_timestamp;
+    out.data.assign(
+        nv12Buffer,
+        nv12Buffer + width * height * 3 / 2
+        );
 
     av_frame_unref(frame);
     return DecodeResult::FrameReady;

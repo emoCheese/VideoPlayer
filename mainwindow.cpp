@@ -2,6 +2,8 @@
 #include "ui_mainwindow.h"
 #include <QFileDialog>
 #include <QStandardPaths>
+#include <QTimer>
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -12,6 +14,8 @@ MainWindow::MainWindow(QWidget *parent)
 
 MainWindow::~MainWindow()
 {
+    if (player)
+        delete player;
     delete ui;
 }
 
@@ -41,6 +45,10 @@ void MainWindow::on_btnSelectVideo_clicked()
             );
     qInfo() << "打开视频: " << url;
 
+    player = new VideoPlayer(url.toStdString());
+    player->start();
+
+
 
     ui->btnStop->setVisible(true);
 }
@@ -48,9 +56,6 @@ void MainWindow::on_btnSelectVideo_clicked()
 
 void MainWindow::on_btnStop_clicked()
 {
-
-
-
     ui->btnStop->setVisible(false);
     ui->btnPlay->setVisible(true);
 }

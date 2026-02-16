@@ -19,25 +19,34 @@ enum class DecodeResult {
     Error
 };
 
-class VideoDecoder
-{
+class VideoDecoder {
 public:
-    VideoDecoder(AVCodecParameters*);
+    VideoDecoder() = default;
     ~VideoDecoder();
 
-    bool openDecoder();
+    bool open(const AVStream* stream);
     void close();
 
     DecodeResult send(const PacketData& pkt);
     DecodeResult receive(VideoFrame& out);
+
+    AVRational timeBase() const { return timeBase_; }
+    int streamIndex() const { return streamIndex_; }
+
 private:
-    AVCodecParameters* params;
     AVCodecContext* codecCtx = nullptr;
     AVFrame* frame = nullptr;
     SwsContext* swsCtx = nullptr;
+
     int width = 0;
     int height = 0;
+    AVPixelFormat srcPixFmt = AV_PIX_FMT_NONE;
+
     uint8_t* nv12Buffer = nullptr;
+
+    AVRational timeBase_{};
+    int streamIndex_ = -1;
 };
+
 
 #endif // VIDEODECODER_H

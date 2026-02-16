@@ -11,7 +11,6 @@ VideoWidget::VideoWidget(QWidget *parent)
 VideoWidget::~VideoWidget()
 {
     makeCurrent();
-
     delete[] frameBuf;
     frameBuf = nullptr;
 
@@ -29,7 +28,6 @@ VideoWidget::~VideoWidget()
         glDeleteTextures(1, &texUV);
         texUV = 0;
     }
-
     doneCurrent();
 }
 

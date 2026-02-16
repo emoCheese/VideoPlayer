@@ -3,7 +3,6 @@
 
 #include "packetqueue.h"
 #include <string>
-
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -20,19 +19,28 @@ public:
     bool open(std::string_view u);
     void close();
 
-    // 读一个 packet（EOF 返回 false）
-    bool read(PacketData& out);
+    void start();                //
+    bool seek(double seconds);   //
 
-    int videoStreamIndex() const;
-    int audioStreamIndex() const;
+
+    // 读一个 packet（EOF 返回 false）
+    bool readFrame(PacketData& out);
+
+    const AVStream* videoStream() const;
+    const AVStream* audioStream() const;
+
+    int getVideoStreamIndex() const;
+    int getAudioStreamIndex() const;
+
+    int serial() const;
 
 private:
-    std::string url;
-    AVFormatContext* fmtCtx = nullptr;
-    AVPacket* pkt = nullptr;
-    int videoStream = -1;
-    int audioStream = -1;
-    int serial = 0;
+    std::string m_url;
+    AVFormatContext* m_fmtCtx = nullptr;
+    AVPacket* m_pkt = nullptr;
+    int m_videoStreamIndex = -1;
+    int m_audioStreamIndex = -1;
+    int m_serial = 0;
 };
 
 #endif // DEMUXER_H

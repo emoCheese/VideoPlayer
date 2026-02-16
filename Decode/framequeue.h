@@ -35,7 +35,7 @@ public:
     void flush(int newSerial);
 
     FrameResult push(VideoFrame&& frame, bool block);
-    FrameResult pop(bool block);
+    FrameResult pop(bool block = true);
 
     size_t size() const;
 

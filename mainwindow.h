@@ -2,6 +2,7 @@
 #define MAINWINDOW_H
 
 #include <QMainWindow>
+#include "Decode/videoplayer.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -28,5 +29,6 @@ private slots:
     void on_btnSelectRtsp_clicked();
 private:
     Ui::MainWindow *ui;
+    VideoPlayer* player = nullptr;
 };
 #endif // MAINWINDOW_H
