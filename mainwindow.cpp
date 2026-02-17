@@ -48,8 +48,6 @@ void MainWindow::on_btnSelectVideo_clicked()
     player = new VideoPlayer(url.toStdString());
     player->start();
 
-
-
     ui->btnStop->setVisible(true);
 }
 

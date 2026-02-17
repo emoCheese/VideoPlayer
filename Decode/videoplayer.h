@@ -6,8 +6,6 @@
 #include "videodecoder.h"
 #include <atomic>
 #include <thread>
-#include "videorendergl.h"
-
 
 enum class DecodeState {
     ReceiveFrames,   // 尽量从 decoder 掏帧
@@ -26,17 +24,22 @@ enum class DemuxState {
     Error
 };
 
-
 class VideoPlayer {
 public:
-    VideoPlayer(const std::string& u, const NativeWindow& win);
+    VideoPlayer(const std::string& u);
     ~VideoPlayer();
 
     void start();
     void stop();
     void seek(double seconds);
 
-    FrameResult getVideoFrame(bool block = true);
+    // 非阻塞，UI / render thread 用
+    bool peekVideoFrame(VideoFrame*& frame);
+    void popVideoFrame();
+
+    VideoClock& clock() { return videoClock; }
+
+
 private:
     void demuxLoop();
     void videoDecodeLoop();
@@ -48,21 +51,15 @@ private:
 
     Demuxer demux;
     VideoDecoder videoDec;
-    VideoRenderGL renderGL;
     VideoClock videoClock;
-
-    // window
-    NativeWindow window_;
 
     PacketQueue videoPktQueue;
     FrameQueue  videoFrameQueue;
 
     std::thread demuxThread;
     std::thread videoThread;
-    std::thread renderThread;
 
     std::atomic<bool> abort_{false};
-
 
 };
 

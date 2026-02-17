@@ -2,25 +2,63 @@
 #define VIDEOCLOCK_H
 #include <atomic>
 
-class VideoClock {
+
+template <typename Impl>
+class ClockBase {
 public:
-    VideoClock();
+    void reset() {
+        impl().resetImpl();
+    }
 
-    void reset();                             // start / seek  重置时钟（开始播放或跳转）
-    void setSpeed(double speed = 1.0);       // 1.0 = normal
+    void setSpeed(double speed) {
+        impl().setSpeedImpl(speed);
+    }
 
-    void update(double pts);                 // after frame rendered 在帧渲染完成后调用
-    double time() const;                     // 获取当前视频时间 (s)
-    double delay(double nextPts) const;     // sleep time before next frame
+    void update(double pts) {
+        impl().updateImpl(pts);
+    }
+
+    double time() const {
+        return impl().timeImpl();
+    }
+
+    double delay(double nextPts) const {
+        return impl().delayImpl(nextPts);
+    }
+
+protected:
+    Impl& impl() {
+        return static_cast<Impl&>(*this);
+    }
+
+    const Impl& impl() const {
+        return static_cast<const Impl&>(*this);
+    }
+};
+
+
+class VideoClock : public ClockBase<VideoClock> {
+public:
+    VideoClock() { resetImpl(); }
+
+    void resetImpl();
+
+    void setSpeedImpl(double speed);
+
+    void updateImpl(double pts);
+
+    double timeImpl() const;
+
+    double delayImpl(double nextPts) const;
 
 private:
     static double nowSec();
 
 private:
-    std::atomic<double> clockPts_{0.0};     // last frame pts
+    std::atomic<double> clockPts_{0.0};
     std::atomic<double> speed_{1.0};
-
-    std::atomic<double> baseSysTime_{0.0};  // system time when clockPts was set
+    std::atomic<double> baseSysTime_{0.0};
 };
+
 
 #endif // VIDEOCLOCK_H

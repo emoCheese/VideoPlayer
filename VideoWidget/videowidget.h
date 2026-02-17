@@ -2,60 +2,31 @@
 #define VIDEOWIDGET_H
 
 #include <QOpenGLWidget>
-#include <QOpenGLFunctions_3_3_Core>
-#include <QOpenGLShaderProgram>
-#include <QOpenGLBuffer>
-#include <QOpenGLVertexArrayObject>
 #include <QMutex>
-#include <QTimer>
+#include <vector>
 
-class VideoWidget : public QOpenGLWidget, protected QOpenGLFunctions_3_3_Core
+#include "VideoRendererCore.h"
+
+class VideoWidget : public QOpenGLWidget
 {
     Q_OBJECT
 public:
-    explicit VideoWidget(QWidget *parent = nullptr);
-    ~VideoWidget();
-
-public slots:
-    // Thread 解码完成后调用
-    void onFrameArrived(uchar* nv12, int w, int h);
+    explicit VideoWidget(QWidget* parent = nullptr);
 
 protected:
     void initializeGL() override;
-    void resizeGL(int w, int h) override;
     void paintGL() override;
+    void resizeGL(int w, int h) override;
 
 private:
-    void initShader();
-    void initGeometry();
-    void initTextures();
-    void checkGLError(const QString& operation);
+    VideoRendererCore renderer;
 
-    QString vertexShaderSrc() const;
-    QString fragmentShaderSrc() const;
-
-private:
-    // OpenGL
-    QOpenGLShaderProgram* program = nullptr;
-    QOpenGLVertexArrayObject vao;
-    QOpenGLBuffer vbo{QOpenGLBuffer::VertexBuffer};
-
-    GLuint texY = 0;
-    GLuint texUV = 0;
-
-    // Frame buffer (NV12)
-    QMutex frameMutex;
-    uint8_t* frameBuf = nullptr;
+    QMutex mutex;
+    std::vector<uint8_t> frameBuf;
     int frameW = 0;
     int frameH = 0;
-    int lastFrameW = 0;  // 记录上一帧尺寸，避免不必要的内存重分配
-    int lastFrameH = 0;
-
-    // 是否有效视频帧
-    std::atomic<bool> hasVideoFrame{false};
-
-    // 性能优化标志
-    bool needToUpdateTextures = true;
+    bool hasFrame = false;
 };
+
 
 #endif // VIDEOWIDGET_H

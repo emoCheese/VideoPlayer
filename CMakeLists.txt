@@ -5,8 +5,9 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets OpenGL OpenGLWidgets)
-
+set(CMAKE_AUTOUIC ON)
 qt_standard_project_setup()
+
 
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
@@ -15,6 +16,10 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavutil
     libswscale
 )
+
+add_library(glad STATIC glad/src/glad.c)
+target_include_directories(glad PUBLIC glad/include)
+
 
 qt_add_executable(QFFPlayer
     WIN32 MACOSX_BUNDLE
@@ -31,10 +36,7 @@ qt_add_executable(QFFPlayer
     Decode/videodecoder.h Decode/videodecoder.cpp
 
     Decode/videoclock.h Decode/videoclock.cpp
-    Decode/platform_gl.h
-
-    Decode/RenderCore.h
-    Decode/videorendergl.h Decode/videorendergl.cpp
+    VideoWidget/videorenderercore.h VideoWidget/videorenderercore.cpp
 )
 
 target_link_libraries(QFFPlayer
@@ -44,12 +46,14 @@ target_link_libraries(QFFPlayer
         Qt6::OpenGL
         Qt6::OpenGLWidgets
         PkgConfig::FFMPEG
+        glad
 )
 
 target_include_directories(QFFPlayer
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/VideoWidget
     ${CMAKE_CURRENT_SOURCE_DIR}/Decode
+    ${CMAKE_CURRENT_SOURCE_DIR}/glad/include
 )
 
 message(STATUS "FFmpeg include dirs: ${FFMPEG_INCLUDE_DIRS}")

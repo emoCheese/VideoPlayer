@@ -1,65 +1,76 @@
 #include "framequeue.h"
 
-
-FrameQueue::FrameQueue(size_t maxSize)
-    : maxSize_(maxSize) {}
-
-FrameResult FrameQueue::push(VideoFrame&& frame, bool block)
+FrameQueue::FrameQueue(size_t capacity)
+    : queue_(capacity),
+    capacity_(capacity)
 {
-    std::unique_lock lock(mtx_);
-    // 防止无限增长
-    while (!closed_ && queue_.size() >= maxSize_) {
-        if (!block)
-            return FrameQueueFull{};
-        cv_.wait(lock);
-    }
-
-    if (closed_)
-        return FrameQueueClosed{};
-
-    queue_.push_back(std::move(frame));
-    cv_.notify_all();
-    return queue_.back();
 }
 
-
-FrameResult FrameQueue::pop(bool block)
+bool FrameQueue::push(VideoFrame&& frame)
 {
-    std::unique_lock lock(mtx_);
-    while (!closed_ && queue_.empty()) {
-        if (!block)
-            return FrameQueueEmpty{};
-        cv_.wait(lock);
-    }
+    std::lock_guard<std::mutex> lock(mtx_);
 
-    if (queue_.empty())
-        return FrameQueueClosed{};
+    if (closed_)
+        return false;
 
-    VideoFrame frame = std::move(queue_.front());
-    queue_.pop_front();
-    cv_.notify_all();
-    return frame;
+    if (size_ >= capacity_)
+        return false; // 满了，拒绝
+
+    queue_[windex_] = std::move(frame);
+    windex_ = (windex_ + 1) % capacity_;
+    size_++;
+
+    return true;
+}
+
+// 渲染线程通常先 peek 获取帧进行渲染，渲染完成后才调用 pop 移除
+bool FrameQueue::peek(VideoFrame*& frame)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    if (size_ == 0) return false;
+    frame = &queue_[rindex_];
+    return true;
+}
+
+bool FrameQueue::pop()
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+
+    if (size_ == 0)
+        return false;
+
+    rindex_ = (rindex_ + 1) % capacity_;
+    size_--;
+
+    return true;
 }
 
 void FrameQueue::flush(int newSerial)
 {
-    std::lock_guard lock(mtx_);
-    queue_.clear();
-    serial_ = newSerial;
-    cv_.notify_all();
+    std::lock_guard<std::mutex> lock(mtx_);
+
+    rindex_ = 0;
+    windex_ = 0;
+    size_   = 0;
+
+    // serial 通常在上层用
+    (void)newSerial;
 }
 
 void FrameQueue::close()
 {
-    std::lock_guard lock(mtx_);
+    std::lock_guard<std::mutex> lock(mtx_);
     closed_ = true;
-    queue_.clear();
-    cv_.notify_all();
 }
-
 
 size_t FrameQueue::size() const
 {
-    std::lock_guard lock(mtx_);
-    return queue_.size();
+    std::lock_guard<std::mutex> lock(mtx_);
+    return size_;
+}
+
+bool FrameQueue::empty() const
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+    return size_ == 0;
 }
