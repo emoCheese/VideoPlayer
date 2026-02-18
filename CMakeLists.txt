@@ -5,11 +5,8 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
-# find_package(Qt6 6.5 REQUIRED COMPONENTS OpenGL OpenGLWidgets)
-find_package(OpenGL REQUIRED)
+find_package(Qt6 6.5 REQUIRED COMPONENTS OpenGL OpenGLWidgets)
 find_package(PkgConfig REQUIRED)
-add_library(glad STATIC glad/src/glad.c)
-target_include_directories(glad PUBLIC glad/include)
 
 qt_standard_project_setup()
 
@@ -36,22 +33,18 @@ qt_add_executable(QFFPlayer
     Decode/videodecoder.h Decode/videodecoder.cpp
 
     Decode/videoclock.h Decode/videoclock.cpp
-    VideoWidget/videosurface.cpp VideoWidget/videosurface.h
-    Decode/renderthread.h Decode/renderthread.cpp
-    Decode/nv12_renderer.h Decode/nv12_renderer.cpp
-)
 
-target_link_libraries(QFFPlayer
-    PRIVATE
-        glad
-        OpenGL::GL
-        PkgConfig::GLFW
+
+
+    VideoWidget/videowidget.h VideoWidget/videowidget.cpp
 )
 
 target_link_libraries(QFFPlayer
     PRIVATE
         Qt::Core
         Qt::Widgets
+        Qt6::OpenGL
+        Qt6::OpenGLWidgets
         PkgConfig::FFMPEG
 )
 
