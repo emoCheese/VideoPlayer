@@ -1,5 +1,5 @@
-#ifndef VIDEOCLOCK_H
-#define VIDEOCLOCK_H
+#ifndef CLOCKBASE_H
+#define CLOCKBASE_H
 #include <atomic>
 
 
@@ -61,4 +61,4 @@ private:
 };
 
 
-#endif // VIDEOCLOCK_H
+#endif // CLOCKBASE_H

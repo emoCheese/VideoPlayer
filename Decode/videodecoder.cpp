@@ -7,7 +7,7 @@ bool VideoDecoder::open(const AVStream* stream)
     if (!stream || !stream->codecpar)
         return false;
     close();
-
+    closed_ = false;
     streamIndex_ = stream->index;
     timeBase_    = stream->time_base;
 
@@ -53,6 +53,7 @@ bool VideoDecoder::open(const AVStream* stream)
 
 void VideoDecoder::close()
 {
+    closed_ = true;
     if (codecCtx) {
         avcodec_free_context(&codecCtx);
         codecCtx = nullptr;
@@ -73,6 +74,7 @@ void VideoDecoder::close()
 
 DecodeResult VideoDecoder::send(const PacketData &pkt)
 {
+    if (closed_ || !codecCtx) return DecodeResult::Error;
     int ret = -1;
     if (!pkt.pkt || pkt.pkt->data == nullptr)
         ret = avcodec_send_packet(codecCtx, nullptr);
@@ -85,6 +87,7 @@ DecodeResult VideoDecoder::send(const PacketData &pkt)
         return DecodeResult::Error;
     return DecodeResult::FrameReady;
 }
+
 DecodeResult VideoDecoder::receive(VideoFrame &out)
 {
     int ret = avcodec_receive_frame(codecCtx, frame);
@@ -101,6 +104,7 @@ DecodeResult VideoDecoder::receive(VideoFrame &out)
     };
     int linesize[2] = { width, width };
 
+    // 将 yuv 数据转换为 NV12
     sws_scale(
         swsCtx,
         frame->data,

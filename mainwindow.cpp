@@ -3,6 +3,7 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QTimer>
+#include <videowidget.h>
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -44,11 +45,16 @@ void MainWindow::on_btnSelectVideo_clicked()
     qInfo() << "打开视频: " << url;
 
     player = new VideoPlayer(url.toStdString());
-
+    ui->videoWidget->setVideoPlayer(player);
+    ui->videoWidget->setClock(&player->clock());
     player->start();
 
-
     ui->btnStop->setVisible(true);
+    QTimer* timer = new QTimer(this);
+    connect(timer, &QTimer::timeout, this, [this]{
+        ui->videoWidget->renderStep();
+    });
+    timer->start(33); // 5ms tick
 }
 
 

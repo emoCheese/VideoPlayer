@@ -31,6 +31,7 @@ inline PacketPtr make_packet() {
 struct PacketData {
     PacketPtr pkt;
     int serial;
+    bool isFlush = false;   // 当flush时需要主动设置
 };
 
 struct PacketQueueClosed {};   // abort_request
@@ -54,7 +55,7 @@ public:
     ~PacketQueue() noexcept;
 
     // put：接管 pkt 所有权 不创建 pkt
-    PutResult put(PacketPtr pkt, bool block = true) noexcept;
+    PutResult put(PacketPtr data, bool isFlush, bool block = true) noexcept;
 
     // block = true 等价 ffplay 的 block
     GetResult get(bool block = true) noexcept;
@@ -69,12 +70,8 @@ public:
     int serial() const noexcept { return serial_; }
 
 private:
-    struct Item {
-        PacketPtr pkt;
-        int serial;
-    };
 
-    std::deque<Item> queue_;
+    std::deque<PacketData> queue_;
     size_t max_packets_;
     size_t max_bytes_;
 

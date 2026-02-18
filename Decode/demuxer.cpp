@@ -87,6 +87,7 @@ bool Demuxer::readFrame(PacketData &out)
             ++m_serial;
             out.pkt = nullptr;
             out.serial = m_serial;
+            out.isFlush = false;
             return false;
         }
         if (m_pkt->stream_index == m_videoStreamIndex) {
@@ -94,6 +95,7 @@ bool Demuxer::readFrame(PacketData &out)
             av_packet_move_ref(p.get(), m_pkt);
             out.pkt = std::move(p);
             out.serial = m_serial;
+            out.isFlush = false;
             av_packet_unref(m_pkt);
             return true;
         } else if (m_pkt->stream_index == m_audioStreamIndex) {

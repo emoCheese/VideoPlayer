@@ -2,7 +2,7 @@
 #define VIDEOPLAYER_H
 
 #include "demuxer.h"
-#include "videoclock.h"
+#include "ClockBase.h"
 #include "videodecoder.h"
 #include <atomic>
 #include <thread>
@@ -31,7 +31,7 @@ public:
 
     void start();
     void stop();
-    void seek(double seconds);
+    void seek(double seconds);  // todo 待实现
 
     // 非阻塞，UI / render thread 用
     bool peekVideoFrame(VideoFrame*& frame);

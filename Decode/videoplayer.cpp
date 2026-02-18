@@ -1,5 +1,6 @@
 #include "videoplayer.h"
 #include <iostream>
+#include <qdebug.h>
 
 VideoPlayer::VideoPlayer(const std::string &u)
     : url(u)
@@ -47,11 +48,6 @@ void VideoPlayer::stop()
     if (!abort_.compare_exchange_strong(expected, true)) {
         return;
     }
-
-    // 关闭 demux（如果你有 close / interrupt）
-    demux.close();  // 如果没有，也可以删掉
-    videoDec.close();
-
     // 关闭队列，唤醒所有阻塞线程
     videoPktQueue.close();
     videoFrameQueue.close();
@@ -61,6 +57,10 @@ void VideoPlayer::stop()
         demuxThread.join();
     if (videoThread.joinable())
         videoThread.join();
+
+    // 关闭 demux 永远不要在线程退出前 free codec。
+    demux.close();  // 如果没有，也可以删掉
+    videoDec.close();
 }
 
 bool VideoPlayer::peekVideoFrame(VideoFrame *&frame)
@@ -98,7 +98,7 @@ void VideoPlayer::demuxLoop()
                 // 非视频包（或被丢弃）
                 break;
             }
-            auto res = videoPktQueue.put(std::move(data.pkt), true);
+            auto res = videoPktQueue.put(std::move(data.pkt), data.isFlush);  // 默认阻塞调用
             if (std::holds_alternative<PacketQueueClosed>(res)) {
                 state = DemuxState::Ended;
             }
@@ -107,8 +107,13 @@ void VideoPlayer::demuxLoop()
         }
 
         case DemuxState::Draining: {
-            // ⭐ 用 flush packet（pkt == nullptr）通知 decoder
-            videoPktQueue.put(nullptr);  // send nullptr = flush
+            // 用 flush packet（pkt == nullptr）通知 decoder
+            PacketData flush;
+            flush.pkt = nullptr;
+            flush.isFlush = true;
+            flush.serial = demux.serial();
+
+            videoPktQueue.put(nullptr, true);
             state = DemuxState::Ended;
             break;
         }
@@ -174,6 +179,7 @@ void VideoPlayer::videoDecodeLoop()
             PacketData pkt = std::get<PacketData>(std::move(pktRes));
             if (videoDec.send(pkt) == DecodeResult::Error) {
                 state = DecodeState::Error;
+                std::cerr << "VideoDecoder::send error\n" << "";
             } else {
                 state = DecodeState::ReceiveFrames;
             }

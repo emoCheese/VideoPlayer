@@ -1,6 +1,6 @@
 #include "videowidget.h"
 #include "VideoPlayer.h"
-#include "videoclock.h"
+#include "ClockBase.h"
 
 
 // ==================== 顶点着色器 ====================
@@ -146,6 +146,8 @@ void VideoWidget::renderStep()
 
     if (!player_->peekVideoFrame(frame))    // 获取帧指针
         return;
+
+
 
     if (!frame || frame->pts == AV_NOPTS_VALUE)
         return; // 无效帧

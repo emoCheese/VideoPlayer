@@ -32,10 +32,7 @@ qt_add_executable(QFFPlayer
     Decode/demuxer.h Decode/demuxer.cpp
     Decode/videodecoder.h Decode/videodecoder.cpp
 
-    Decode/videoclock.h Decode/videoclock.cpp
-
-
-
+    Decode/ClockBase.h Decode/ClockBase.cpp
     VideoWidget/videowidget.h VideoWidget/videowidget.cpp
 )
 

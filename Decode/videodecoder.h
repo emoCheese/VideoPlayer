@@ -1,6 +1,7 @@
 #ifndef VIDEODECODER_H
 #define VIDEODECODER_H
 
+#include <atomic>
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
@@ -46,6 +47,8 @@ private:
 
     AVRational timeBase_{};
     int streamIndex_ = -1;
+
+    std::atomic<bool> closed_{false};
 };
 
 

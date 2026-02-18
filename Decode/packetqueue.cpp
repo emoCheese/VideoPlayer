@@ -11,26 +11,26 @@ PacketQueue::~PacketQueue() noexcept {
     flush();
 }
 
-PutResult PacketQueue::put(PacketPtr pkt, bool block) noexcept {
+PutResult PacketQueue::put(PacketPtr data, bool isFlush, bool block) noexcept {
     std::unique_lock lock(mutex_);
-    if (pkt) {
-        // 🔒 阻塞等待：对齐 ffplay 行为
+    if (data) {
+        // 阻塞等待，参考 ffplay
         if (block) {
             cond_.wait(lock, [&]() {
                 return closed_ ||
                        (queue_.size() < max_packets_ &&
-                        total_size_ + pkt->size < max_bytes_);
+                                   total_size_ + data->size < max_bytes_);
             });
         }
         if (closed_) return PacketQueueClosed{};
         if (queue_.size() >= max_packets_ ||
-            total_size_ + pkt->size >= max_bytes_) {
+            total_size_ + data->size >= max_bytes_) {
             return PacketQueueFull{};
         }
-        total_size_ += pkt->size;
+        total_size_ += data->size;
     }
-
-    queue_.push_back({ std::move(pkt), serial_ });
+    PacketData pkt{std::move(data), serial_, isFlush};
+    queue_.push_back(std::move(pkt));
     ++size_;
 
     cond_.notify_all(); // 唤醒 get / put
@@ -52,25 +52,25 @@ GetResult PacketQueue::get(bool block) noexcept {
                    : GetResult{PacketQueueEmpty{}};
     }
 
-    PacketData data = {
-        std::move(queue_.front().pkt),
-        queue_.front().serial
-    };
+    PacketData data{ std::move(queue_.front()) };
 
-    total_size_ -= data.pkt->size;
+    // 视频播放完成时奔溃  data.pkt 为 null
+    if (!data.isFlush && data.pkt)
+        total_size_ -= data.pkt->size;
     queue_.pop_front();
     --size_;
     cond_.notify_all();
     return GetResult{std::move(data)};
 }
 
+// 清空队列
 void PacketQueue::flush() noexcept {
     std::lock_guard lock(mutex_);
     queue_.clear();
     size_ = 0;
     total_size_ = 0;
-    ++serial_;          // ⭐ 对齐 ffplay
-     cond_.notify_all();
+    ++serial_;          // 参考 ffplay
+    cond_.notify_all();
 }
 
 void PacketQueue::close() noexcept {
