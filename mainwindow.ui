@@ -16,7 +16,7 @@
   <widget class="QWidget" name="centralwidget">
    <layout class="QVBoxLayout" name="verticalLayout">
     <item>
-     <widget class="QWidget" name="video" native="true"/>
+     <widget class="VideoSurface" name="video" native="true"/>
     </item>
     <item>
      <widget class="QWidget" name="widget" native="true">
@@ -92,12 +92,20 @@
      <x>0</x>
      <y>0</y>
      <width>943</width>
-     <height>22</height>
+     <height>20</height>
     </rect>
    </property>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>VideoSurface</class>
+   <extends>QWidget</extends>
+   <header>videosurface.h</header>
+   <container>1</container>
+  </customwidget>
+ </customwidgets>
  <resources/>
  <connections/>
 </ui>

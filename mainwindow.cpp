@@ -27,8 +27,6 @@ void MainWindow::initUI()
 
 void MainWindow::on_btnPlay_clicked()
 {
-
-
     ui->btnPlay->setVisible(false);
     ui->btnStop->setVisible(true);
 }
@@ -46,7 +44,9 @@ void MainWindow::on_btnSelectVideo_clicked()
     qInfo() << "打开视频: " << url;
 
     player = new VideoPlayer(url.toStdString());
+
     player->start();
+
 
     ui->btnStop->setVisible(true);
 }

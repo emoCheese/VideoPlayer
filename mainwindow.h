@@ -3,6 +3,7 @@
 
 #include <QMainWindow>
 #include "Decode/videoplayer.h"
+#include "videosurface.h"
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -30,5 +31,6 @@ private slots:
 private:
     Ui::MainWindow *ui;
     VideoPlayer* player = nullptr;
+    VideoSurface* videoSurface = nullptr;
 };
 #endif // MAINWINDOW_H

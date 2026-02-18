@@ -60,7 +60,6 @@ private:
     std::thread videoThread;
 
     std::atomic<bool> abort_{false};
-
 };
 
 

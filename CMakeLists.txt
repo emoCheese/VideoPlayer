@@ -1,33 +1,33 @@
 cmake_minimum_required(VERSION 3.19)
-project(QFFPlayer LANGUAGES CXX)
+project(QFFPlayer LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets OpenGL OpenGLWidgets)
-set(CMAKE_AUTOUIC ON)
+find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
+# find_package(Qt6 6.5 REQUIRED COMPONENTS OpenGL OpenGLWidgets)
+find_package(OpenGL REQUIRED)
+find_package(PkgConfig REQUIRED)
+add_library(glad STATIC glad/src/glad.c)
+target_include_directories(glad PUBLIC glad/include)
+
 qt_standard_project_setup()
 
-
-find_package(PkgConfig REQUIRED)
 pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavcodec
     libavformat
     libavutil
     libswscale
 )
-
-add_library(glad STATIC glad/src/glad.c)
-target_include_directories(glad PUBLIC glad/include)
-
+pkg_check_modules(GLFW REQUIRED IMPORTED_TARGET glfw3)
 
 qt_add_executable(QFFPlayer
-    WIN32 MACOSX_BUNDLE
+    WIN32
     main.cpp
     mainwindow.cpp
     mainwindow.h
     mainwindow.ui
-    VideoWidget/videowidget.cpp VideoWidget/videowidget.h
+
     Decode/ffmpeg.h Decode/ffmpeg.cpp
     Decode/packetqueue.h Decode/packetqueue.cpp
     Decode/videoplayer.h Decode/videoplayer.cpp
@@ -36,17 +36,23 @@ qt_add_executable(QFFPlayer
     Decode/videodecoder.h Decode/videodecoder.cpp
 
     Decode/videoclock.h Decode/videoclock.cpp
-    VideoWidget/videorenderercore.h VideoWidget/videorenderercore.cpp
+    VideoWidget/videosurface.cpp VideoWidget/videosurface.h
+    Decode/renderthread.h Decode/renderthread.cpp
+    Decode/nv12_renderer.h Decode/nv12_renderer.cpp
+)
+
+target_link_libraries(QFFPlayer
+    PRIVATE
+        glad
+        OpenGL::GL
+        PkgConfig::GLFW
 )
 
 target_link_libraries(QFFPlayer
     PRIVATE
         Qt::Core
         Qt::Widgets
-        Qt6::OpenGL
-        Qt6::OpenGLWidgets
         PkgConfig::FFMPEG
-        glad
 )
 
 target_include_directories(QFFPlayer
@@ -54,7 +60,9 @@ target_include_directories(QFFPlayer
     ${CMAKE_CURRENT_SOURCE_DIR}/VideoWidget
     ${CMAKE_CURRENT_SOURCE_DIR}/Decode
     ${CMAKE_CURRENT_SOURCE_DIR}/glad/include
+    ${GLFW_INCLUDE_DIRS}/
 )
+message(STATUS "GLFW include dir   : ${GLFW_INCLUDE_DIRS}")
 
 message(STATUS "FFmpeg include dirs: ${FFMPEG_INCLUDE_DIRS}")
 message(STATUS "FFmpeg libraries   : ${FFMPEG_LIBRARIES}")
