@@ -55,7 +55,7 @@ public:
     ~PacketQueue() noexcept;
 
     // put：接管 pkt 所有权 不创建 pkt
-    PutResult put(PacketPtr data, bool isFlush, bool block = true) noexcept;
+    PutResult put(PacketData &&data, bool block = true) noexcept;
 
     // block = true 等价 ffplay 的 block
     GetResult get(bool block = true) noexcept;

@@ -11,26 +11,28 @@ PacketQueue::~PacketQueue() noexcept {
     flush();
 }
 
-PutResult PacketQueue::put(PacketPtr data, bool isFlush, bool block) noexcept {
+PutResult PacketQueue::put(PacketData&& data, bool block) noexcept {
     std::unique_lock lock(mutex_);
-    if (data) {
-        // 阻塞等待，参考 ffplay
+    if (!data.isFlush && data.pkt) {
         if (block) {
             cond_.wait(lock, [&]() {
                 return closed_ ||
                        (queue_.size() < max_packets_ &&
-                                   total_size_ + data->size < max_bytes_);
+                        total_size_ + data.pkt->size < max_bytes_);
             });
         }
+
         if (closed_) return PacketQueueClosed{};
+
         if (queue_.size() >= max_packets_ ||
-            total_size_ + data->size >= max_bytes_) {
+            total_size_ + data.pkt->size >= max_bytes_) {
             return PacketQueueFull{};
         }
-        total_size_ += data->size;
+
+        total_size_ += data.pkt->size;
     }
-    PacketData pkt{std::move(data), serial_, isFlush};
-    queue_.push_back(std::move(pkt));
+
+    queue_.push_back(std::move(data));
     ++size_;
 
     cond_.notify_all(); // 唤醒 get / put

@@ -98,7 +98,7 @@ void VideoPlayer::demuxLoop()
                 // 非视频包（或被丢弃）
                 break;
             }
-            auto res = videoPktQueue.put(std::move(data.pkt), data.isFlush);  // 默认阻塞调用
+            auto res = videoPktQueue.put(std::move(data), true);  // 默认阻塞调用
             if (std::holds_alternative<PacketQueueClosed>(res)) {
                 state = DemuxState::Ended;
             }
@@ -113,7 +113,7 @@ void VideoPlayer::demuxLoop()
             flush.isFlush = true;
             flush.serial = demux.serial();
 
-            videoPktQueue.put(nullptr, true);
+            videoPktQueue.put(std::move(flush), true);
             state = DemuxState::Ended;
             break;
         }
