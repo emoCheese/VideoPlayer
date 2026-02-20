@@ -29,6 +29,9 @@ public:
     bool peek(VideoFrame*& frame);
     bool pop();
 
+    // 不需要 peek
+    bool pop(VideoFrame& out);
+
     // 控制
     void flush(int newSerial);
     void close();

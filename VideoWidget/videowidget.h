@@ -36,6 +36,11 @@ public:
 
     // 外部调用：用于时钟驱动渲染（由定时器或主循环调用）
     void renderStep();
+    inline void renderStep(std::shared_ptr<VideoFrame>);
+
+public slots:
+
+    void onFrameReady(std::shared_ptr<VideoFrame> frame);
 
 protected:
     // QOpenGLWidget 的三个核心虚函数
@@ -49,7 +54,6 @@ private:
 
 private:
     VideoPlayer* player_ = nullptr;  // 播放器控制器（提供帧数据）
-    VideoClock*  clock_  = nullptr;  // 视频时钟（控制播放节奏）
 
     QOpenGLShaderProgram program_;   // 着色器程序（顶点 + 片段）
 

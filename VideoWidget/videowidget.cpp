@@ -62,11 +62,6 @@ void VideoWidget::setVideoPlayer(VideoPlayer* player)
     player_ = player;
 }
 
-void VideoWidget::setClock(VideoClock* clock)
-{
-    clock_ = clock;
-}
-
 void VideoWidget::initializeGL()
 {
     initializeOpenGLFunctions();    // 初始化 OpenGL 函数指针（必须首先调用）
@@ -148,7 +143,7 @@ void VideoWidget::renderStep()
     // 队列为空，等待解码
     if (!player_->peekVideoFrame(frame)) {
         spdlog::debug("peekVideoFrame failed!");
-        QTimer::singleShot(5, this, &VideoWidget::renderStep);
+        QTimer::singleShot(5, this, qOverload<>(&VideoWidget::renderStep));
         return;
     }
 
@@ -199,7 +194,7 @@ void VideoWidget::renderStep()
         player_->popVideoFrame();
         lastPts = pts;
         frameTimer = now;  // 重置基准
-        QTimer::singleShot(0, this, &VideoWidget::renderStep);
+        QTimer::singleShot(0, this, qOverload<>(&VideoWidget::renderStep));
         return;
     }
 
@@ -208,7 +203,7 @@ void VideoWidget::renderStep()
         spdlog::trace("WAIT {:.3f} ms", diff * 1000.0);
         QTimer::singleShot(int(diff * 1000),
                            this,
-                           &VideoWidget::renderStep);
+                           qOverload<>(&VideoWidget::renderStep));
         return;
     }
 
@@ -222,8 +217,22 @@ void VideoWidget::renderStep()
 
     hasFrame_ = true;
     update();                      // 触发 paintGL()
-    QTimer::singleShot(1, this, &VideoWidget::renderStep);
+    QTimer::singleShot(1, this, qOverload<>(&VideoWidget::renderStep));
 }
+
+void VideoWidget::renderStep(std::shared_ptr<VideoFrame> frame)
+{
+    makeCurrent();
+    uploadFrame(frame.get());
+    hasFrame_ = true;
+    update();
+}
+
+void VideoWidget::onFrameReady(std::shared_ptr<VideoFrame> frame)
+{
+    renderStep(frame);
+}
+
 // ==================== 上传帧数据到纹理 ====================
 /**
  * @brief 将 NV12 帧数据上传到 OpenGL 纹理

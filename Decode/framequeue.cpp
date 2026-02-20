@@ -46,6 +46,21 @@ bool FrameQueue::pop()
     return true;
 }
 
+bool FrameQueue::pop(VideoFrame &out)
+{
+    std::lock_guard<std::mutex> lock(mtx_);
+
+    if (size_ == 0)
+        return false;
+
+    out = std::move(queue_[rindex_]);
+
+    rindex_ = (rindex_ + 1) % capacity_;
+    size_--;
+
+    return true;
+}
+
 void FrameQueue::flush(int newSerial)
 {
     std::lock_guard<std::mutex> lock(mtx_);

@@ -25,6 +25,7 @@ bool VideoDecoder::open(const AVStream* stream)
     if (!codecCtx)
         return false;
 
+    codecCtx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;  // 确保输出所有帧
     if (avcodec_parameters_to_context(codecCtx, stream->codecpar) < 0)
         return false;
 

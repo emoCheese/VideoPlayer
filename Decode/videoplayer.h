@@ -2,8 +2,8 @@
 #define VIDEOPLAYER_H
 
 #include "demuxer.h"
-#include "ClockBase.h"
 #include "videodecoder.h"
+#include "masterclock.h"
 #include <atomic>
 #include <thread>
 
@@ -33,11 +33,13 @@ public:
     void stop();
     void seek(double seconds);  // todo 待实现
 
+    void startClock(std::function<void(std::shared_ptr<VideoFrame>)> cb) { masterClock.start(cb); }
+
     // 非阻塞，UI / render thread 用
     bool peekVideoFrame(VideoFrame*& frame);
     void popVideoFrame();
 
-    VideoClock& clock() { return videoClock; }
+    MasterClock& clock() { return masterClock; }
 
 
 
@@ -45,14 +47,12 @@ private:
     void demuxLoop();
     void videoDecodeLoop();
 
-    void renderLoop();
-
 private:
     std::string url;
 
     Demuxer demux;
     VideoDecoder videoDec;
-    VideoClock videoClock;
+    MasterClock masterClock;
 
     PacketQueue videoPktQueue;
     FrameQueue  videoFrameQueue;

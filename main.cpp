@@ -7,7 +7,7 @@
 #include <spdlog/spdlog.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
 
-void static initLogger()
+static void initLogger()
 {
     auto logger = spdlog::stdout_color_mt("player");
     logger->set_pattern("[%H:%M:%S.%e] [%^%l%$] %v");
@@ -17,9 +17,20 @@ void static initLogger()
     spdlog::error("TEST ERROR");
 }
 
+struct VideoFrame;
+// 声明元类型
+Q_DECLARE_METATYPE(std::shared_ptr<VideoFrame>)
+
+static void registerMyType()
+{
+    // 注册元类型（只调用一次）
+    qRegisterMetaType<std::shared_ptr<VideoFrame>>("std::shared_ptr<VideoFrame>");
+}
+
 int main(int argc, char *argv[])
 {
     initLogger();
+    registerMyType();
     QApplication a(argc, argv);
     MainWindow w;
     w.show();

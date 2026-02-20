@@ -3,6 +3,7 @@
 #include <QFileDialog>
 #include <QStandardPaths>
 #include <QTimer>
+#include <spdlog/spdlog.h>
 #include <videowidget.h>
 
 MainWindow::MainWindow(QWidget *parent)
@@ -10,6 +11,8 @@ MainWindow::MainWindow(QWidget *parent)
     , ui(new Ui::MainWindow)
 {
     ui->setupUi(this);
+    connect(this, &MainWindow::frameReady,
+            ui->videoWidget, &VideoWidget::onFrameReady);
     initUI();
 }
 
@@ -42,19 +45,20 @@ void MainWindow::on_btnSelectVideo_clicked()
             QStandardPaths::standardLocations(QStandardPaths::MoviesLocation).first(),
             "视频 (*.mkv *.mp4 *.*)"
             );
-    qInfo() << "打开视频: " << url;
+    spdlog::debug("打开视频: {}",  url.toStdString());
 
     player = new VideoPlayer(url.toStdString());
     // 需要先设置 videoWidget 和对应的 时钟 clock
-    ui->videoWidget->setVideoPlayer(player);
-    ui->videoWidget->setClock(&player->clock());
+    ui->videoWidget->setVideoPlayer(player);    
     player->start();
 
-    ui->btnStop->setVisible(true);
+    // 启动时钟，控制拉帧
+    player->startClock([this](std::shared_ptr<VideoFrame> frame_ptr){
+        spdlog::debug("帧渲染 frame pts {}", frame_ptr->pts);
+        emit frameReady(frame_ptr);
+    });
 
-    // 控制拉帧
-    // 在 start() 后调用一次
-    QTimer::singleShot(0, ui->videoWidget, &VideoWidget::renderStep);
+    ui->btnStop->setVisible(true);
 }
 
 

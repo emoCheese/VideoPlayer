@@ -1,11 +1,13 @@
 #include "videoplayer.h"
 #include <iostream>
 #include <qdebug.h>
+#include <spdlog/spdlog.h>
 
 VideoPlayer::VideoPlayer(const std::string &u)
     : url(u)
     , videoPktQueue(100, 16 * 1024 * 1024)
     , videoFrameQueue(8)
+    , masterClock(videoFrameQueue)
 {}
 
 VideoPlayer::~VideoPlayer()
@@ -48,6 +50,8 @@ void VideoPlayer::stop()
     if (!abort_.compare_exchange_strong(expected, true)) {
         return;
     }
+    // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
+    masterClock.stop();
     // 关闭队列，唤醒所有阻塞线程
     videoPktQueue.close();
     videoFrameQueue.close();
@@ -100,6 +104,7 @@ void VideoPlayer::demuxLoop()
             auto res = videoPktQueue.put(std::move(data), true);  // 默认阻塞调用
             if (std::holds_alternative<PacketQueueClosed>(res)) {
                 state = DemuxState::Ended;
+                spdlog::debug("Video Packet Queue Closed, DemuxState::Ended");
             }
             // block=true，理论上不会 Full
             break;
@@ -113,6 +118,7 @@ void VideoPlayer::demuxLoop()
             flush.serial = demux.serial();
 
             videoPktQueue.put(std::move(flush), true);
+            spdlog::debug("Video Flush");
             state = DemuxState::Ended;
             break;
         }
@@ -148,9 +154,11 @@ void VideoPlayer::videoDecodeLoop()
             DecodeResult r = videoDec.receive(frame);
             if (r == DecodeResult::FrameReady) {
                 // ⭐ 非阻塞 push
-                if (!videoFrameQueue.push(std::move(frame))) {
+                // 当push 返回false 时可能队列满，可能队列关闭，此时无法退出死循环
+                while (!videoFrameQueue.push(std::move(frame))) {
                     // queue 满了 → 轻微 sleep，避免空转
-                    std::this_thread::sleep_for(std::chrono::microseconds(500));
+                    spdlog::debug("queue full or closed sleep 500 microseconds");
+                    std::this_thread::sleep_for(std::chrono::microseconds(400));
                 }
                 break;
             }

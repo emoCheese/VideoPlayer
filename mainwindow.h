@@ -17,6 +17,9 @@ class MainWindow : public QMainWindow
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
+
+signals:
+    void frameReady(std::shared_ptr<VideoFrame>);
 private:
     void initUI();
 private slots:
