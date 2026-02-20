@@ -1,4 +1,5 @@
 #include "framequeue.h"
+#include <spdlog/spdlog.h>
 
 FrameQueue::FrameQueue(size_t capacity)
     : queue_(capacity),

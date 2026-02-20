@@ -3,10 +3,13 @@ project(QFFPlayer LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_WIN32_EXECUTABLE OFF)
 
 find_package(Qt6 6.5 REQUIRED COMPONENTS Core Widgets)
 find_package(Qt6 6.5 REQUIRED COMPONENTS OpenGL OpenGLWidgets)
 find_package(PkgConfig REQUIRED)
+find_package(fmt REQUIRED)
+find_package(spdlog REQUIRED)
 
 qt_standard_project_setup()
 
@@ -18,8 +21,8 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
 )
 pkg_check_modules(GLFW REQUIRED IMPORTED_TARGET glfw3)
 
+# 在 release 时加上 WIN32, WIN32 会阻碍 stdout 输出
 qt_add_executable(QFFPlayer
-    WIN32
     main.cpp
     mainwindow.cpp
     mainwindow.h
@@ -43,6 +46,8 @@ target_link_libraries(QFFPlayer
         Qt6::OpenGL
         Qt6::OpenGLWidgets
         PkgConfig::FFMPEG
+        fmt::fmt
+        spdlog
 )
 
 target_include_directories(QFFPlayer

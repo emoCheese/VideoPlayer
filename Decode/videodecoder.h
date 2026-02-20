@@ -34,6 +34,8 @@ public:
     AVRational timeBase() const { return timeBase_; }
     int streamIndex() const { return streamIndex_; }
 
+    double getPtsSec() const;
+
 private:
     AVCodecContext* codecCtx = nullptr;
     AVFrame* frame = nullptr;

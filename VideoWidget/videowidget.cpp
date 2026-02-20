@@ -1,7 +1,8 @@
 #include "videowidget.h"
 #include "VideoPlayer.h"
 #include "ClockBase.h"
-
+#include <QDebug>
+#include <spdlog/spdlog.h>
 
 // ==================== 顶点着色器 ====================
 // 功能：将顶点位置传递给 GPU，并传递纹理坐标给片段着色器
@@ -139,37 +140,90 @@ void VideoWidget::resizeGL(int w, int h)
 
 void VideoWidget::renderStep()
 {
-    if (!player_ || !clock_)
+    if (!player_)
         return;
 
     VideoFrame* frame = nullptr;
 
-    if (!player_->peekVideoFrame(frame))    // 获取帧指针
+    // 队列为空，等待解码
+    if (!player_->peekVideoFrame(frame)) {
+        spdlog::debug("peekVideoFrame failed!");
+        QTimer::singleShot(5, this, &VideoWidget::renderStep);
         return;
+    }
 
+    static double frameTimer = 0.0;   // 理论播放时间
+    static double lastPts = 0.0;
+    static bool first = true;
 
+    double pts = frame->pts;
+    double now = VideoClock::nowSec();
 
-    if (!frame || frame->pts == AV_NOPTS_VALUE)
-        return; // 无效帧
+    if (first) {
+        frameTimer = now;
+        lastPts = pts;
+        first = false;
+    }
 
-    // 2. 转换 PTS 为秒（假设 PTS 单位是微秒）
-    double ptsSec = frame->pts / 1000000.0;
-    double delay = clock_->delay(ptsSec);
+    const double maxFrameDuration = 0.1;
+    // 计算帧间间隔
+    double duration = pts - lastPts;
+    if (duration <= 0.0 || duration > maxFrameDuration)
+    {
+        spdlog::warn("abnormal duration {:.3f}, fix", duration);
+        duration = 1.0 / 25.0;
+    }
 
-    if (delay > 0.0)    // 如果还需要等待，跳过本次渲染
+    if (duration <= 0.0 || duration > 1.0)
+        duration = 1.0 / 25.0;
+
+    // ===== 音频同步入口（未来扩展） =====
+    // duration = computeTargetDelay(duration);
+
+    double targetTime = frameTimer + duration;
+    double diff = targetTime - now;
+
+    spdlog::debug(
+        "PTS: {:.3f}  lastPTS: {:.3f}  duration: {:.3f}  "
+        "frameTimer: {:.3f}  now: {:.3f}  diff: {:.3f}",
+        pts,
+        lastPts,
+        duration,
+        frameTimer,
+        now,
+        diff
+        );
+    // ===== 严重落后，丢帧 =====
+    if (diff < -0.1) {
+        spdlog::warn("DROP FRAME  pts={:.3f} diff={:.3f}", pts, diff);
+        player_->popVideoFrame();
+        lastPts = pts;
+        frameTimer = now;  // 重置基准
+        QTimer::singleShot(0, this, &VideoWidget::renderStep);
         return;
+    }
 
-    makeCurrent();  // 确保 OpenGL 上下文在当前线程
+    // ===== 还没到播放时间 =====
+    if (diff > 0.001) {
+        spdlog::trace("WAIT {:.3f} ms", diff * 1000.0);
+        QTimer::singleShot(int(diff * 1000),
+                           this,
+                           &VideoWidget::renderStep);
+        return;
+    }
 
-    uploadFrame(frame); // 上传帧数据到 GPU 纹理
+    // ===== 真正显示帧 =====
+    frameTimer = targetTime;
+    lastPts = pts;
 
-    clock_->update(ptsSec);     // 更新视频时钟
-    player_->popVideoFrame();   // 上传帧数据到纹理，更新时钟后再pop. 0拷贝
+    makeCurrent();                 // 必须先激活 OpenGL 上下文
+    uploadFrame(frame);
+    player_->popVideoFrame();
 
     hasFrame_ = true;
-    update();
+    update();                      // 触发 paintGL()
+    QTimer::singleShot(1, this, &VideoWidget::renderStep);
 }
-
 // ==================== 上传帧数据到纹理 ====================
 /**
  * @brief 将 NV12 帧数据上传到 OpenGL 纹理

@@ -1,43 +1,63 @@
 #include "ClockBase.h"
-#include <chrono>
 
-
-
-void VideoClock::resetImpl() {
-    clockPts_.store(0.0);
-    baseSysTime_.store(nowSec());
+void VideoClock::reset()
+{
+    pts_ = 0.0;
+    lastUpdated_ = nowSec();
+    speed_ = 1.0;
+    paused_ = false;
+    serial_ = 0;
 }
 
-void VideoClock::setSpeedImpl(double speed) {
+void VideoClock::syncTo(double pts, int serial)
+{
+    pts_ = pts;
+    lastUpdated_ = nowSec();
+    serial_ = serial;
+}
+
+void VideoClock::setSpeed(double speed)
+{
     if (speed <= 0.0)
         speed = 1.0;
-    speed_.store(speed);
+
+    // 保持连续性
+    pts_ = time();
+    lastUpdated_ = nowSec();
+
+    speed_ = speed;
 }
 
-void VideoClock::updateImpl(double pts) {
-    clockPts_.store(pts);
-    baseSysTime_.store(nowSec());
+void VideoClock::pause()
+{
+    if (paused_) return;
+
+    pts_ = time();
+    paused_ = true;
 }
 
-double VideoClock::timeImpl() const {
-    double pts   = clockPts_.load();
-    double base  = baseSysTime_.load();
-    double speed = speed_.load();
-    return pts + (nowSec() - base) * speed;
+void VideoClock::resume()
+{
+    if (!paused_) return;
+
+    lastUpdated_ = nowSec();
+    paused_ = false;
 }
 
-double VideoClock::delayImpl(double nextPts) const {
-    double diff = nextPts - timeImpl();
+double VideoClock::time() const
+{
+    if (paused_)
+        return pts_;
+    double now = nowSec();
+    return pts_ + (now - lastUpdated_) * speed_;
+}
 
-    // ffplay 风格：允许轻微负值
-    if (diff < -0.05)
+double VideoClock::delay(double framePts) const
+{
+    double diff = framePts - time();
+    if (diff < -0.1)
         return 0.0;
-
     return diff;
 }
 
-double VideoClock::nowSec() {
-    using clock = std::chrono::steady_clock;
-    return std::chrono::duration<double>(
-               clock::now().time_since_epoch()).count();
-}
+int VideoClock::serial() const { return serial_; }

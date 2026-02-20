@@ -45,16 +45,16 @@ void MainWindow::on_btnSelectVideo_clicked()
     qInfo() << "打开视频: " << url;
 
     player = new VideoPlayer(url.toStdString());
+    // 需要先设置 videoWidget 和对应的 时钟 clock
     ui->videoWidget->setVideoPlayer(player);
     ui->videoWidget->setClock(&player->clock());
     player->start();
 
     ui->btnStop->setVisible(true);
-    QTimer* timer = new QTimer(this);
-    connect(timer, &QTimer::timeout, this, [this]{
-        ui->videoWidget->renderStep();
-    });
-    timer->start(33); // 5ms tick
+
+    // 控制拉帧
+    // 在 start() 后调用一次
+    QTimer::singleShot(0, ui->videoWidget, &VideoWidget::renderStep);
 }
 
 

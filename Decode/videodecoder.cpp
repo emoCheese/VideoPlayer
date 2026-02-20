@@ -1,4 +1,5 @@
 #include "videodecoder.h"
+#include <spdlog/spdlog.h>
 
 VideoDecoder::~VideoDecoder() { close(); }
 
@@ -6,10 +7,15 @@ bool VideoDecoder::open(const AVStream* stream)
 {
     if (!stream || !stream->codecpar)
         return false;
+
     close();
     closed_ = false;
     streamIndex_ = stream->index;
     timeBase_    = stream->time_base;
+
+    spdlog::info("video time_base: {}/{}",
+                 stream->time_base.num,
+                 stream->time_base.den);
 
     const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec)
@@ -118,12 +124,14 @@ DecodeResult VideoDecoder::receive(VideoFrame &out)
     out.width  = width;
     out.height = height;
     out.format = AV_PIX_FMT_NV12;
-    out.pts    = frame->best_effort_timestamp;
+    if (frame->best_effort_timestamp != AV_NOPTS_VALUE)
+        out.pts = frame->best_effort_timestamp * av_q2d(timeBase_);
+    else
+        out.pts = 0.0;
     out.data.assign(
         nv12Buffer,
         nv12Buffer + width * height * 3 / 2
         );
-
     av_frame_unref(frame);
     return DecodeResult::FrameReady;
 }

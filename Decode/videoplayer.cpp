@@ -74,7 +74,6 @@ void VideoPlayer::popVideoFrame()
     videoFrameQueue.pop();
 }
 
-
 void VideoPlayer::demuxLoop()
 {
     DemuxState state = DemuxState::Init;

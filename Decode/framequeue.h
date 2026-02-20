@@ -14,7 +14,7 @@ struct VideoFrame {
     int height = 0;
     AVPixelFormat format = AV_PIX_FMT_NV12;
     std::vector<uint8_t> data;   // NV12
-    int64_t pts = AV_NOPTS_VALUE;
+    double pts = 0.0;     // 直接存秒
     int serial = 0;
 };
 
