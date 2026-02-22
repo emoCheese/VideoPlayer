@@ -35,10 +35,6 @@ public:
 
     void startClock(std::function<void(std::shared_ptr<VideoFrame>)> cb) { masterClock.start(cb); }
 
-    // 非阻塞，UI / render thread 用
-    bool peekVideoFrame(VideoFrame*& frame);
-    void popVideoFrame();
-
     MasterClock& clock() { return masterClock; }
 
 

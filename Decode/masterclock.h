@@ -23,6 +23,7 @@ public:
 
     void stop() {
         running_ = false;
+        queue_.notifyAll();
         if (thread_.joinable())
             thread_.join();
     }

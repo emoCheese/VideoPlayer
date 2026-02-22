@@ -67,17 +67,6 @@ void VideoPlayer::stop()
     videoDec.close();
 }
 
-bool VideoPlayer::peekVideoFrame(VideoFrame *&frame)
-{
-    if (abort_) return false;
-    return videoFrameQueue.peek(frame);
-}
-
-void VideoPlayer::popVideoFrame()
-{
-    videoFrameQueue.pop();
-}
-
 void VideoPlayer::demuxLoop()
 {
     DemuxState state = DemuxState::Init;
@@ -153,13 +142,10 @@ void VideoPlayer::videoDecodeLoop()
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
             if (r == DecodeResult::FrameReady) {
-                while (true) {
-                    auto result = videoFrameQueue.push(std::move(frame));
-                    if (result == PushResult::Ok)
-                        break;
-                    if (result == PushResult::Closed)
-                        return;   // 立刻退出解码线程
-                    std::this_thread::sleep_for(std::chrono::microseconds(400)); // Full
+                auto result = videoFrameQueue.push(std::move(frame));
+                if (result == PushResult::Closed) {
+                    spdlog::info("VideoFrameQueue closed, decode loop exit");
+                    return;
                 }
                 break;
             }
@@ -197,7 +183,9 @@ void VideoPlayer::videoDecodeLoop()
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
             if (r == DecodeResult::FrameReady) {
-                videoFrameQueue.push(std::move(frame));
+                auto result = videoFrameQueue.push(std::move(frame));
+                if (result == PushResult::Closed)
+                    return;
                 break;
             }
             if (r == DecodeResult::Drained) {

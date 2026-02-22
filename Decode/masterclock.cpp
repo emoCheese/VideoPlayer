@@ -23,9 +23,8 @@ void MasterClock::loop()
     while (running_.load()) {
         VideoFrame frame;
         if (!queue_.pop(frame)) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            spdlog::debug("MasterClock: queue empty, sleep 1ms");
-            continue;
+            spdlog::info("MasterClock: queue closed, exit");
+            break;
         }
 
         double pts = frame.pts;
