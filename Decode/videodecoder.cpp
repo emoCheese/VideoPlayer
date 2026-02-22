@@ -83,7 +83,7 @@ DecodeResult VideoDecoder::send(const PacketData &pkt)
 {
     if (closed_ || !codecCtx) return DecodeResult::Error;
     int ret = -1;
-    if (!pkt.pkt || pkt.pkt->data == nullptr)
+    if (!pkt.pkt || pkt.pkt->data == nullptr)   // flush
         ret = avcodec_send_packet(codecCtx, nullptr);
     else
         ret = avcodec_send_packet(codecCtx, pkt.pkt.get());

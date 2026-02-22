@@ -31,13 +31,15 @@ public:
 
     void start();
     void stop();
+
+    void pause();
+    void play();
+
     void seek(double seconds);  // todo 待实现
 
     void startClock(std::function<void(std::shared_ptr<VideoFrame>)> cb) { masterClock.start(cb); }
 
     MasterClock& clock() { return masterClock; }
-
-
 
 private:
     void demuxLoop();
@@ -51,7 +53,8 @@ private:
     MasterClock masterClock;
 
     PacketQueue videoPktQueue;
-    FrameQueue  videoFrameQueue;
+    FrameQueue<VideoFrame>  videoFrameQueue;
+    // FrameQueue<AudioFrame>  audioFrameQueue;
 
     std::thread demuxThread;
     std::thread videoThread;

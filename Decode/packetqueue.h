@@ -34,33 +34,31 @@ struct PacketData {
     bool isFlush = false;   // 当flush时需要主动设置
 };
 
-struct PacketQueueClosed {};   // abort_request
-struct PacketQueueEmpty {};    // 非阻塞但无数据
-using GetResult = std::variant<PacketData, PacketQueueClosed, PacketQueueEmpty>;
+enum class PutStatus {
+    Ok,
+    Full,
+    Closed
+};
 
-struct PacketQueueFull {};
-
-using PutResult = std::variant<
-    std::monostate, // 成功
-    PacketQueueFull,
-    PacketQueueClosed
-    >;
+enum class GetStatus {
+    Ok,
+    Empty,
+    Closed
+};
 
 class PacketQueue {
 public:
-    PacketQueue(
-        size_t maxPackets = MAX_PACKETS,
-        size_t maxBytes = MAX_BYTES) noexcept;
+    PacketQueue(size_t maxPackets = MAX_PACKETS,
+                size_t maxBytes   = MAX_BYTES) noexcept
+        : max_packets_(maxPackets),
+        max_bytes_(maxBytes) {}
 
-    ~PacketQueue() noexcept;
+    ~PacketQueue() noexcept = default;
 
-    // put：接管 pkt 所有权 不创建 pkt
-    PutResult put(PacketData &&data, bool block = true) noexcept;
+    PutStatus put(PacketData&& data, bool block = true) noexcept;
 
-    // block = true 等价 ffplay 的 block
-    GetResult get(bool block = true) noexcept;
+    GetStatus get(PacketData& out, bool block = true) noexcept;
 
-    // 立刻丢弃队列里还没被消费的数据
     void flush() noexcept;
 
     void close() noexcept;
@@ -70,17 +68,16 @@ public:
     int serial() const noexcept { return serial_; }
 
 private:
-
     std::deque<PacketData> queue_;
     size_t max_packets_;
     size_t max_bytes_;
 
     mutable std::mutex mutex_;
-    std::condition_variable cond_;
+    std::condition_variable not_full_;
+    std::condition_variable not_empty_;
 
     bool closed_ = false;
-    int size_ = 0;
-    int total_size_ = 0;
+    size_t total_bytes_ = 0;
     int serial_ = 0;
 };
 

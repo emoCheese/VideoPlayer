@@ -31,6 +31,7 @@ void MainWindow::initUI()
 
 void MainWindow::on_btnPlay_clicked()
 {
+    player->play();
     ui->btnPlay->setVisible(false);
     ui->btnStop->setVisible(true);
 }
@@ -64,6 +65,7 @@ void MainWindow::on_btnSelectVideo_clicked()
 
 void MainWindow::on_btnStop_clicked()
 {
+    player->pause();
     ui->btnStop->setVisible(false);
     ui->btnPlay->setVisible(true);
 }

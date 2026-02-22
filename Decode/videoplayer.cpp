@@ -50,8 +50,7 @@ void VideoPlayer::stop()
     if (!abort_.compare_exchange_strong(expected, true)) {
         return;
     }
-    // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
-    masterClock.stop();
+
     // 关闭队列，唤醒所有阻塞线程
     videoPktQueue.close();
     videoFrameQueue.close();
@@ -61,10 +60,22 @@ void VideoPlayer::stop()
         demuxThread.join();
     if (videoThread.joinable())
         videoThread.join();
+    // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
+    masterClock.stop();
 
     // 关闭 demux 永远不要在线程退出前 free codec。
     demux.close();  // 如果没有，也可以删掉
     videoDec.close();
+}
+
+void VideoPlayer::pause()
+{
+    masterClock.pause(true);
+}
+
+void VideoPlayer::play()
+{
+    masterClock.pause(false);
 }
 
 void VideoPlayer::demuxLoop()
@@ -90,8 +101,8 @@ void VideoPlayer::demuxLoop()
                 // 非视频包（或被丢弃）
                 break;
             }
-            auto res = videoPktQueue.put(std::move(data), true);  // 默认阻塞调用
-            if (std::holds_alternative<PacketQueueClosed>(res)) {
+            auto res = videoPktQueue.put(std::move(data), true);  // 默认阻塞调用，不会返回 Full
+            if (res == PutStatus::Closed) {
                 state = DemuxState::Ended;
                 spdlog::debug("Video Packet Queue Closed, DemuxState::Ended");
             }
@@ -107,7 +118,7 @@ void VideoPlayer::demuxLoop()
             flush.serial = demux.serial();
 
             videoPktQueue.put(std::move(flush), true);
-            spdlog::debug("Video Flush");
+            spdlog::info("Video Flush");
             state = DemuxState::Ended;
             break;
         }
@@ -142,8 +153,7 @@ void VideoPlayer::videoDecodeLoop()
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
             if (r == DecodeResult::FrameReady) {
-                auto result = videoFrameQueue.push(std::move(frame));
-                if (result == PushResult::Closed) {
+                if (!videoFrameQueue.push(std::move(frame))) {
                     spdlog::info("VideoFrameQueue closed, decode loop exit");
                     return;
                 }
@@ -161,19 +171,18 @@ void VideoPlayer::videoDecodeLoop()
             break;
         }
         case DecodeState::NeedPacket: {
-            auto pktRes = videoPktQueue.get(true);
-            if (std::holds_alternative<PacketQueueClosed>(pktRes)) {
-                videoDec.send(PacketData{}); // send(nullptr)
+            PacketData pkt;
+            auto status = videoPktQueue.get(pkt, true);
+            if (status == GetStatus::Closed) {
+                videoDec.send(PacketData{}); // flush
                 state = DecodeState::Draining;
                 break;
             }
-            if (std::holds_alternative<PacketQueueEmpty>(pktRes)) {
+            if (status == GetStatus::Empty)
                 break;
-            }
-            PacketData pkt = std::get<PacketData>(std::move(pktRes));
             if (videoDec.send(pkt) == DecodeResult::Error) {
                 state = DecodeState::Error;
-                std::cerr << "VideoDecoder::send error\n" << "";
+                spdlog::debug("videoDecodeLoop() VideoDecoder::send error");
             } else {
                 state = DecodeState::ReceiveFrames;
             }
@@ -183,8 +192,7 @@ void VideoPlayer::videoDecodeLoop()
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
             if (r == DecodeResult::FrameReady) {
-                auto result = videoFrameQueue.push(std::move(frame));
-                if (result == PushResult::Closed)
+                if (!videoFrameQueue.push(std::move(frame)))
                     return;
                 break;
             }
@@ -193,7 +201,6 @@ void VideoPlayer::videoDecodeLoop()
                 break;
             }
             if (r == DecodeResult::TryAgain) {
-                std::this_thread::sleep_for(std::chrono::microseconds(500));
                 break;
             }
             state = DecodeState::Error;

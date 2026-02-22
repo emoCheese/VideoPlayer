@@ -13,7 +13,7 @@ public:
     using Callback = std::function<void(std::shared_ptr<VideoFrame>)>;
     using Clock = std::chrono::steady_clock;
 
-    MasterClock(FrameQueue& queue) : queue_(queue) {}
+    MasterClock(FrameQueue<VideoFrame>& queue) : queue_(queue) {}
 
     void start(Callback cb) {
         callback_ = std::move(cb);
@@ -23,7 +23,6 @@ public:
 
     void stop() {
         running_ = false;
-        queue_.notifyAll();
         if (thread_.joinable())
             thread_.join();
     }
@@ -40,7 +39,7 @@ private:
                    Clock::now().time_since_epoch()).count();
     }
 
-    FrameQueue& queue_;
+    FrameQueue<VideoFrame>& queue_;
     Callback callback_;
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};

@@ -27,13 +27,18 @@ void MasterClock::loop()
             break;
         }
 
+        if (paused_.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+            continue;
+        }
+
         double pts = frame.pts;
         int serial = frame.serial;
 
         // ---------- 处理序列变化（如 seek） ----------
         if (!initialized || serial != lastSerial) {
             spdlog::info("MasterClock: serial changed from {} to {}, resetting clock", lastSerial, serial);
-            double now = getSystemTimeSec();
+            double now = nowSec();
             startTime = now - pts;          // 校准外部时钟
             lastPts = pts;
             lastDuration = 1.0 / 25.0;      // 重置为默认值（可根据帧率优化）
@@ -50,7 +55,7 @@ void MasterClock::loop()
         }
 
         // ---------- 计算当前时间和外部时钟值 ----------
-        double now = getSystemTimeSec();
+        double now = nowSec();
         double master = now - startTime;     // 外部时钟当前值
 
         // ---------- 计算本帧的持续时间 ----------
@@ -88,7 +93,7 @@ void MasterClock::loop()
             // 细粒度 busy-wait 直到达到目标时间
             int busy_count = 0;
             while (true) {
-                now = getSystemTimeSec();
+                now = nowSec();
                 master = now - startTime;
                 if (pts - master <= 0)
                     break;
@@ -101,15 +106,15 @@ void MasterClock::loop()
 
         // ---------- 等待结束，校准外部时钟（与视频时钟同步） ----------
         // 校准前先获取最新时间
-        now = getSystemTimeSec();
+        now = nowSec();
         startTime = now - pts;   // 使外部时钟值等于 pts
 
         // ---------- 回调渲染 ----------
         if (callback_) {
-            double cb_start = getSystemTimeSec();
+            double cb_start = nowSec();
             auto framePtr = std::make_shared<VideoFrame>(std::move(frame));
             callback_(framePtr);
-            double cb_end = getSystemTimeSec();
+            double cb_end = nowSec();
             spdlog::debug("MasterClock: callback pts={:.6f} cb_time_ms={:.3f}",
                           pts, (cb_end - cb_start) * 1000.0);
         }

@@ -1,78 +1,64 @@
 #include "packetqueue.h"
 
-PacketQueue::PacketQueue(size_t maxPackets, size_t maxBytes) noexcept
-    : max_packets_(maxPackets), max_bytes_(maxBytes)
-{
-
-}
-
-PacketQueue::~PacketQueue() noexcept {
-    close();
-    flush();
-}
-
-PutResult PacketQueue::put(PacketData&& data, bool block) noexcept {
+PutStatus PacketQueue::put(PacketData &&data, bool block) noexcept {
     std::unique_lock lock(mutex_);
+
     if (!data.isFlush && data.pkt) {
+
         if (block) {
-            cond_.wait(lock, [&]() {
+            not_full_.wait(lock, [&] {
                 return closed_ ||
                        (queue_.size() < max_packets_ &&
-                        total_size_ + data.pkt->size < max_bytes_);
+                        total_bytes_ + data.pkt->size < max_bytes_);
             });
         }
 
-        if (closed_) return PacketQueueClosed{};
+        if (closed_)
+            return PutStatus::Closed;
 
         if (queue_.size() >= max_packets_ ||
-            total_size_ + data.pkt->size >= max_bytes_) {
-            return PacketQueueFull{};
-        }
+            total_bytes_ + data.pkt->size >= max_bytes_)
+            return PutStatus::Full;
 
-        total_size_ += data.pkt->size;
+        total_bytes_ += data.pkt->size;
     }
 
-    queue_.push_back(std::move(data));
-    ++size_;
-
-    cond_.notify_all(); // 唤醒 get / put
-    return std::monostate{};
+    queue_.push_back(std::move(data));  // push_back 已有对象，emplace_back 临时对象
+    not_empty_.notify_one();
+    return PutStatus::Ok;
 }
 
-GetResult PacketQueue::get(bool block) noexcept {
-    std::unique_lock<std::mutex> lock(mutex_);
+GetStatus PacketQueue::get(PacketData &out, bool block) noexcept {
+    std::unique_lock lock(mutex_);
 
     if (block) {
-        cond_.wait(lock, [&] {
+        not_empty_.wait(lock, [&] {
             return closed_ || !queue_.empty();
         });
     }
 
-    if (queue_.empty()) {
-        return closed_
-                   ? GetResult{PacketQueueClosed{}}
-                   : GetResult{PacketQueueEmpty{}};
-    }
+    if (queue_.empty())
+        return closed_ ? GetStatus::Closed
+                       : GetStatus::Empty;
 
-    PacketData data{ std::move(queue_.front()) };
+    out = std::move(queue_.front());
 
-    // 视频播放完成时奔溃  data.pkt 为 null
-    if (!data.isFlush && data.pkt)
-        total_size_ -= data.pkt->size;
+    if (!out.isFlush && out.pkt)
+        total_bytes_ -= out.pkt->size;
+
     queue_.pop_front();
-    --size_;
-    cond_.notify_all();
-    return GetResult{std::move(data)};
+    not_full_.notify_one();
+    return GetStatus::Ok;
 }
 
-// 清空队列
 void PacketQueue::flush() noexcept {
     std::lock_guard lock(mutex_);
+
     queue_.clear();
-    size_ = 0;
-    total_size_ = 0;
-    ++serial_;          // 参考 ffplay
-    cond_.notify_all();
+    total_bytes_ = 0;
+    ++serial_;
+
+    not_full_.notify_all();
 }
 
 void PacketQueue::close() noexcept {
@@ -80,12 +66,12 @@ void PacketQueue::close() noexcept {
         std::lock_guard lock(mutex_);
         closed_ = true;
     }
-    cond_.notify_all();
+    not_empty_.notify_all();
+    not_full_.notify_all();
 }
 
 void PacketQueue::start() noexcept {
-    std::lock_guard<std::mutex> lock(mutex_);
+    std::lock_guard lock(mutex_);
     closed_ = false;
-    ++serial_;          // ⭐ 对齐 ffplay
-    cond_.notify_all();
+    ++serial_;
 }
