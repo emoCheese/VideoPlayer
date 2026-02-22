@@ -153,12 +153,13 @@ void VideoPlayer::videoDecodeLoop()
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
             if (r == DecodeResult::FrameReady) {
-                // ⭐ 非阻塞 push
-                // 当push 返回false 时可能队列满，可能队列关闭，此时无法退出死循环
-                while (!videoFrameQueue.push(std::move(frame))) {
-                    // queue 满了 → 轻微 sleep，避免空转
-                    spdlog::debug("queue full or closed sleep 500 microseconds");
-                    std::this_thread::sleep_for(std::chrono::microseconds(400));
+                while (true) {
+                    auto result = videoFrameQueue.push(std::move(frame));
+                    if (result == PushResult::Ok)
+                        break;
+                    if (result == PushResult::Closed)
+                        return;   // 立刻退出解码线程
+                    std::this_thread::sleep_for(std::chrono::microseconds(400)); // Full
                 }
                 break;
             }

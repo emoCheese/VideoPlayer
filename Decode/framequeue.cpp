@@ -7,21 +7,21 @@ FrameQueue::FrameQueue(size_t capacity)
 {
 }
 
-bool FrameQueue::push(VideoFrame&& frame)
+PushResult FrameQueue::push(VideoFrame&& frame)
 {
     std::lock_guard<std::mutex> lock(mtx_);
 
     if (closed_)
-        return false;
+        return PushResult::Closed;
 
     if (size_ >= capacity_)
-        return false; // 满了，拒绝
+        return PushResult::Full; // 满了，拒绝
 
     queue_[windex_] = std::move(frame);
     windex_ = (windex_ + 1) % capacity_;
     size_++;
 
-    return true;
+    return PushResult::Ok;
 }
 
 // 渲染线程通常先 peek 获取帧进行渲染，渲染完成后才调用 pop 移除

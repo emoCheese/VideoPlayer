@@ -18,12 +18,18 @@ struct VideoFrame {
     int serial = 0;
 };
 
+enum class PushResult {
+    Ok,
+    Full,
+    Closed
+};
+
 class FrameQueue {
 public:
     explicit FrameQueue(size_t capacity);
 
     // 解码线程用
-    bool push(VideoFrame&& frame);
+    PushResult push(VideoFrame&& frame);
 
     // 渲染线程用，先peek获取指针，渲染完成后再pop
     bool peek(VideoFrame*& frame);
