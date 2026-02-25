@@ -2,6 +2,7 @@
 #include <iostream>
 #include <qdebug.h>
 #include <spdlog/spdlog.h>
+#include "externalclock.h"
 #include "videoclock.h"
 
 VideoPlayer::VideoPlayer(const std::string &u)
@@ -85,9 +86,9 @@ void VideoPlayer::play()
 
 void VideoPlayer::startClock(std::function<void (std::shared_ptr<VideoFrame>)> cb)
 {
-    masterClock.setSyncType(MasterClock::SyncType::Video);
-    videoClock = new VideoClock;
-    masterClock.setVideoClock(videoClock);
+    masterClock.setSyncType(MasterClock::SyncType::External);
+    externalClock = new ExternalClock;
+    masterClock.setExternalClock(externalClock);
     masterClock.start(cb);
 }
 

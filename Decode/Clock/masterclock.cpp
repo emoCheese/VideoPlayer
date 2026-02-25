@@ -63,6 +63,7 @@ IClockSource* MasterClock::getMasterClock() const
     return nullptr;
 }
 
+/*
 void MasterClock::loop()
 {
     using Clock = std::chrono::steady_clock;
@@ -140,5 +141,85 @@ void MasterClock::loop()
 
         if (video_clock_)
             video_clock_->set(pts);
+    }
+}
+*/
+// 通用 loop
+void MasterClock::loop()
+{
+    double master_start_time = 0.0;
+    bool first_frame = true;
+
+    while (running_) {
+
+        VideoFrame frame;
+        if (!queue_.pop(frame))
+            break;
+
+        while (paused_ && running_)
+            std::this_thread::sleep_for(std::chrono::milliseconds(2));
+
+        IClockSource* master = getMasterClock();
+        if (!master) {
+            spdlog::error("Master clock is null");
+            continue;
+        }
+
+        const int serial = frame.serial;
+        const double pts = frame.pts;
+
+        // serial 切换重建锚点
+        if (serial != current_serial_) {
+            current_serial_ = serial;
+            first_frame = true;
+        }
+
+        // 初始化绝对时间锚点
+        if (first_frame) {
+            master_start_time = master->now() - pts;
+            first_frame = false;
+
+            spdlog::info("Re-anchor master_start_time={:.6f}", master_start_time);
+        }
+
+        // 计算目标时间
+
+        double master_now = master->now();
+        double target_time = master_start_time + pts;
+        double delay = target_time - master_now;
+        spdlog::info("delay={:.6f}", delay);
+
+        // 丢帧
+        if (delay < drop_threshold_) {
+            spdlog::debug("Drop frame pts={:.6f}, delay={:.6f}", pts, delay);
+            continue;
+        }
+
+        // Hybrid Sleep
+        if (delay > 0) {
+
+            if (delay > 0.002) {
+                std::this_thread::sleep_for(
+                    std::chrono::microseconds(
+                        static_cast<int>((delay - 0.001) * 1e6)));
+            }
+
+            while (running_) {
+                master_now = master->now();
+                if (target_time - master_now <= 0)
+                    break;
+                std::this_thread::yield();
+            }
+        }
+
+        // 渲染
+        if (callback_) {
+            callback_(std::make_shared<VideoFrame>(std::move(frame)));
+        }
+
+        // 如果是 Video Master，需要推进 video_clock
+        if (sync_type_ == SyncType::Video && video_clock_) {
+            video_clock_->set(pts);
+        }
     }
 }

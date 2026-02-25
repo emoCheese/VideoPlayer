@@ -4,36 +4,74 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <spdlog/spdlog.h>
 
 class ExternalClock : public IClockSource {
 public:
     ExternalClock()
     {
-        reset();
+        const double now = getSystemTime();
+        base_time_.store(now, std::memory_order_relaxed);
+        offset_.store(0.0, std::memory_order_relaxed);
+        paused_.store(false, std::memory_order_relaxed);
+
+        spdlog::info("ExternalClock initialized at {:.6f}", now);
     }
 
+    // =====================================
+    // 当前时间
+    // =====================================
     double now() const override
     {
-        if (paused_.load())
-            return paused_pts_;
-        return getSystemTime() - base_;
+        const bool paused = paused_.load(std::memory_order_acquire);
+
+        const double offset = offset_.load(std::memory_order_acquire);
+
+        if (paused)
+            return offset;
+
+        const double base = base_time_.load(std::memory_order_acquire);
+        const double system = getSystemTime();
+
+        return offset + (system - base);
     }
 
+    // =====================================
+    // 设置逻辑时间（重新锚定）
+    // =====================================
     void set(double pts) override
     {
-        base_ = getSystemTime() - pts;
-        paused_pts_ = pts;
+        const double system = getSystemTime();
+
+        // 先设置基准时间
+        base_time_.store(system, std::memory_order_release);
+
+        // 再设置偏移
+        offset_.store(pts, std::memory_order_release);
+
+        spdlog::debug("ExternalClock::set pts={:.6f}", pts);
     }
 
+    // =====================================
+    // 暂停 / 恢复
+    // =====================================
     void pause(bool p) override
     {
-        if (p && !paused_) {
-            paused_pts_ = now();
-            paused_ = true;
+        const bool current = paused_.load(std::memory_order_acquire);
+
+        if (p && !current) {
+            const double current_pts = now();
+            offset_.store(current_pts, std::memory_order_release);
+            paused_.store(true, std::memory_order_release);
+
+            spdlog::debug("ExternalClock paused at {:.6f}", current_pts);
         }
-        else if (!p && paused_) {
-            base_ = getSystemTime() - paused_pts_;
-            paused_ = false;
+        else if (!p && current) {
+            const double system = getSystemTime();
+            base_time_.store(system, std::memory_order_release);
+            paused_.store(false, std::memory_order_release);
+
+            spdlog::debug("ExternalClock resumed");
         }
     }
 
@@ -45,15 +83,14 @@ private:
                    Clock::now().time_since_epoch()).count();
     }
 
-    void reset()
-    {
-        base_ = getSystemTime();
-    }
-
 private:
-    mutable std::mutex mutex_;
-    std::atomic<double> base_ = 0.0;
-    std::atomic<double> paused_pts_ = 0.0;
-    std::atomic_bool paused_ = false;
+    // 系统时间锚点
+    std::atomic<double> base_time_{0.0};
+
+    // 当前逻辑时间偏移
+    std::atomic<double> offset_{0.0};
+
+    // 暂停状态
+    std::atomic<bool> paused_{false};
 };
 #endif // EXTERNALCLOCK_H

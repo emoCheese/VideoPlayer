@@ -4,11 +4,6 @@
 #include "IClockSource.h"
 #include <atomic>
 #include <chrono>
-#include <mutex>
-
-#pragma once
-#include <atomic>
-#include <chrono>
 #include <spdlog/spdlog.h>
 
 class VideoClock : public IClockSource {
