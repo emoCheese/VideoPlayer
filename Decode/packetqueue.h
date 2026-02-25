@@ -1,7 +1,6 @@
 #ifndef PACKETQUEUE_H
 #define PACKETQUEUE_H
 
-#include <variant>
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavutil/avutil.h>

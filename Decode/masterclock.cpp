@@ -2,123 +2,92 @@
 #include <chrono>
 #include <spdlog/spdlog.h>
 
-static double getSystemTimeSec()
-{
-    using clock = std::chrono::steady_clock;
-    return std::chrono::duration<double>(
-               clock::now().time_since_epoch()
-               ).count();
-}
-
 void MasterClock::loop()
 {
-    double startTime = 0.0;          // 外部时钟基准
-    double lastPts = 0.0;             // 上一帧的 PTS（用于计算 duration）
-    double lastDuration = 1.0 / 25.0; // 默认帧间隔（25fps）
-    int lastSerial = -1;               // 上一帧的 serial
-    bool initialized = false;          // 是否已接收到第一帧
-
-    const double maxFrameDuration = 1.0; // 防止异常跳跃
-
-    while (running_.load()) {
+    while (running_.load(std::memory_order_relaxed)) {
         VideoFrame frame;
         if (!queue_.pop(frame)) {
             spdlog::info("MasterClock: queue closed, exit");
             break;
         }
+        // ---------------- pause 处理 ----------------
+        if (paused_.load(std::memory_order_relaxed)) {
+            auto pause_start = nowSec();
+            // 等待直到 resume
+            while (paused_.load() && running_.load())
+                std::this_thread::sleep_for(std::chrono::milliseconds(2));
 
-        if (paused_.load()) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(2));
-            continue;
+            // 时间补偿
+            double pause_end = nowSec();
+            frame_timer_ += (pause_end - pause_start);
         }
 
-        double pts = frame.pts;
-        int serial = frame.serial;
+        const double pts = frame.pts;
+        const int serial = frame.serial;
 
-        // ---------- 处理序列变化（如 seek） ----------
-        if (!initialized || serial != lastSerial) {
-            spdlog::info("MasterClock: serial changed from {} to {}, resetting clock", lastSerial, serial);
-            double now = nowSec();
-            startTime = now - pts;          // 校准外部时钟
-            lastPts = pts;
-            lastDuration = 1.0 / 25.0;      // 重置为默认值（可根据帧率优化）
-            lastSerial = serial;
-            initialized = true;
+        // ---------------- serial 切换处理 ----------------
+        if (serial != current_serial_) {
+            spdlog::info("MasterClock: serial switch {} -> {}",
+                         current_serial_, serial);
 
-            // 立即渲染该帧（不等待）
+            current_serial_ = serial;
+
+            // 重置时钟基准
+            frame_timer_ = nowSec() - pts;
+            last_pts_ = pts;
+            last_duration_ = 1.0 / 25.0;
+
             if (callback_) {
-                auto framePtr = std::make_shared<VideoFrame>(std::move(frame));
-                callback_(framePtr);
+                callback_(std::make_shared<VideoFrame>(std::move(frame)));
             }
-            // 注意：此时 lastPts 已更新为 pts，但回调后不再重复校准
             continue;
         }
 
-        // ---------- 计算当前时间和外部时钟值 ----------
-        double now = nowSec();
-        double master = now - startTime;     // 外部时钟当前值
+        // ---------------- 计算 duration ----------------
+        double duration = pts - last_pts_;
+        if (duration <= 0.0 || duration > max_frame_duration_)
+            duration = last_duration_;
 
-        // ---------- 计算本帧的持续时间 ----------
-        double duration = pts - lastPts;
-        if (duration <= 0.0 || duration > maxFrameDuration) {
-            duration = lastDuration;         // 异常时使用上一帧的间隔
-            spdlog::debug("MasterClock: invalid duration {:.6f}, using last {:.6f}",
-                          pts - lastPts, lastDuration);
+        last_duration_ = duration;
+
+        // ---------------- 获取主时钟 ----------------
+        double master_time = nowSec() - frame_timer_;
+
+        // 未来音频同步时：
+        // master_time = getMasterTime();
+
+        double delay = pts - master_time;
+
+        // ---------------- 丢帧 ----------------
+        if (delay < drop_threshold_) {
+            spdlog::debug("MasterClock: drop frame pts={:.6f} delay={:.6f}",
+                          pts, delay);
+            last_pts_ = pts;
+            continue;
         }
-        lastDuration = duration;              // 更新供后续使用
 
-        // ---------- 计算延迟：本帧 PTS 与外部时钟的差值 ----------
-        double delay = pts - master;
-
-        // ---------- 严重落后：丢帧 ----------
-        if (delay < -0.5) {
-            spdlog::warn("MasterClock: drop frame pts={:.6f} master={:.6f} delay={:.6f} duration={:.6f}",
-                         pts, master, delay, duration);
-            lastPts = pts;   // 更新 lastPts 以便下一帧正确计算 duration
-            continue;        // 不回调，不校准 startTime
-        }
-
-        // ---------- 等待至目标时间 ----------
+        // ---------------- 等待播放时间 ----------------
         if (delay > 0) {
-            spdlog::debug("MasterClock: pts={:.6f} lastPts={:.6f} duration={:.6f} master={:.6f} delay={:.6f}",
-                          pts, lastPts, lastDuration, master, delay);
 
-            // 粗粒度 sleep（预留 1ms 给 busy-wait）
-            if (delay > 0.002) {
-                int sleep_us = static_cast<int>((delay - 0.001) * 1000000);
-                spdlog::debug("MasterClock: coarse sleep {} us", sleep_us);
-                std::this_thread::sleep_for(std::chrono::microseconds(sleep_us));
+            if (delay > fine_wait_threshold_) {
+                std::this_thread::sleep_for(
+                    std::chrono::microseconds(
+                        static_cast<int>((delay - 0.001) * 1e6)));
             }
 
-            // 细粒度 busy-wait 直到达到目标时间
-            int busy_count = 0;
-            while (true) {
-                now = nowSec();
-                master = now - startTime;
-                if (pts - master <= 0)
+            while (running_.load()) {
+                master_time = nowSec() - frame_timer_;
+                if (pts - master_time <= 0)
                     break;
-                ++busy_count;
                 std::this_thread::yield();
             }
-            if (busy_count > 0)
-                spdlog::debug("MasterClock: fine busy-wait loops={}", busy_count);
         }
 
-        // ---------- 等待结束，校准外部时钟（与视频时钟同步） ----------
-        // 校准前先获取最新时间
-        now = nowSec();
-        startTime = now - pts;   // 使外部时钟值等于 pts
-
-        // ---------- 回调渲染 ----------
+        // ---------------- 渲染 ----------------
         if (callback_) {
-            double cb_start = nowSec();
-            auto framePtr = std::make_shared<VideoFrame>(std::move(frame));
-            callback_(framePtr);
-            double cb_end = nowSec();
-            spdlog::debug("MasterClock: callback pts={:.6f} cb_time_ms={:.3f}",
-                          pts, (cb_end - cb_start) * 1000.0);
+            callback_(std::make_shared<VideoFrame>(std::move(frame)));
         }
 
-        lastPts = pts;   // 更新上一帧 PTS
+        last_pts_ = pts;
     }
 }

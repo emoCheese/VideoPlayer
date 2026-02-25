@@ -37,7 +37,7 @@ public:
 
     void seek(double seconds);  // todo 待实现
 
-    void startClock(std::function<void(std::shared_ptr<VideoFrame>)> cb) { masterClock.start(cb); }
+    void startClock(std::function<void(std::shared_ptr<VideoFrame>)> cb);
 
     MasterClock& clock() { return masterClock; }
 
@@ -51,6 +51,10 @@ private:
     Demuxer demux;
     VideoDecoder videoDec;
     MasterClock masterClock;
+
+    IClockSource* videoClock {nullptr};
+    IClockSource* audioClock {nullptr};
+    IClockSource* externalClock {nullptr};
 
     PacketQueue videoPktQueue;
     FrameQueue<VideoFrame>  videoFrameQueue;

@@ -32,15 +32,12 @@ public:
     int getVideoStreamIndex() const;
     int getAudioStreamIndex() const;
 
-    int serial() const;
-
 private:
     std::string m_url;
     AVFormatContext* m_fmtCtx = nullptr;
     AVPacket* m_pkt = nullptr;
     int m_videoStreamIndex = -1;
     int m_audioStreamIndex = -1;
-    int m_serial = 0;
 };
 
 #endif // DEMUXER_H

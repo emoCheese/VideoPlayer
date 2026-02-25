@@ -2,6 +2,7 @@
 #include <iostream>
 #include <qdebug.h>
 #include <spdlog/spdlog.h>
+#include "videoclock.h"
 
 VideoPlayer::VideoPlayer(const std::string &u)
     : url(u)
@@ -66,6 +67,10 @@ void VideoPlayer::stop()
     // 关闭 demux 永远不要在线程退出前 free codec。
     demux.close();  // 如果没有，也可以删掉
     videoDec.close();
+
+    if (videoClock) delete videoClock;
+    if (audioClock) delete audioClock;
+    if (externalClock) delete externalClock;
 }
 
 void VideoPlayer::pause()
@@ -76,6 +81,14 @@ void VideoPlayer::pause()
 void VideoPlayer::play()
 {
     masterClock.pause(false);
+}
+
+void VideoPlayer::startClock(std::function<void (std::shared_ptr<VideoFrame>)> cb)
+{
+    masterClock.setSyncType(MasterClock::SyncType::Video);
+    videoClock = new VideoClock;
+    masterClock.setVideoClock(videoClock);
+    masterClock.start(cb);
 }
 
 void VideoPlayer::demuxLoop()
@@ -101,6 +114,7 @@ void VideoPlayer::demuxLoop()
                 // 非视频包（或被丢弃）
                 break;
             }
+            data.serial = videoPktQueue.serial();
             auto res = videoPktQueue.put(std::move(data), true);  // 默认阻塞调用，不会返回 Full
             if (res == PutStatus::Closed) {
                 state = DemuxState::Ended;
@@ -115,7 +129,7 @@ void VideoPlayer::demuxLoop()
             PacketData flush;
             flush.pkt = nullptr;
             flush.isFlush = true;
-            flush.serial = demux.serial();
+            flush.serial = videoPktQueue.serial();
 
             videoPktQueue.put(std::move(flush), true);
             spdlog::info("Video Flush");

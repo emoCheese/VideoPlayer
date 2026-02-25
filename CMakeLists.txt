@@ -37,8 +37,12 @@ qt_add_executable(QFFPlayer
 
 
     VideoWidget/videowidget.h VideoWidget/videowidget.cpp
-    Decode/masterclock.h Decode/masterclock.cpp
+    Decode/Clock/masterclock.h Decode/Clock/masterclock.cpp
     Decode/audiodecoder.h Decode/audiodecoder.cpp
+
+    Decode/Clock/IClockSource.h
+    Decode/Clock/videoclock.h Decode/Clock/videoclock.cpp
+    Decode/Clock/externalclock.h Decode/Clock/externalclock.cpp
 )
 
 target_link_libraries(QFFPlayer
@@ -56,10 +60,8 @@ target_include_directories(QFFPlayer
     PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/VideoWidget
     ${CMAKE_CURRENT_SOURCE_DIR}/Decode
-    ${CMAKE_CURRENT_SOURCE_DIR}/glad/include
-    ${GLFW_INCLUDE_DIRS}/
+    ${CMAKE_CURRENT_SOURCE_DIR}/Decode/Clock
 )
-message(STATUS "GLFW include dir   : ${GLFW_INCLUDE_DIRS}")
 
 message(STATUS "FFmpeg include dirs: ${FFMPEG_INCLUDE_DIRS}")
 message(STATUS "FFmpeg libraries   : ${FFMPEG_LIBRARIES}")
