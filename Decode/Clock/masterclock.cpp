@@ -30,7 +30,7 @@ void MasterClock::pause(bool p)
     if (audio_clock_) audio_clock_->pause(p);
     if (video_clock_) video_clock_->pause(p);
     if (external_clock_) external_clock_->pause(p);
-    spdlog::debug("MasterClock::pause: {}", p);
+    SPDLOG_DEBUG("MasterClock::pause: {}", p);
 }
 
 void MasterClock::setSyncType(SyncType type)
@@ -161,7 +161,7 @@ void MasterClock::loop()
 
         IClockSource* master = getMasterClock();
         if (!master) {
-            spdlog::error("Master clock is null");
+            SPDLOG_ERROR("Master clock is null");
             continue;
         }
 
@@ -179,7 +179,7 @@ void MasterClock::loop()
             master_start_time = master->now() - pts;
             first_frame = false;
 
-            spdlog::info("Re-anchor master_start_time={:.6f}", master_start_time);
+            SPDLOG_INFO("Re-anchor master_start_time={:.6f}", master_start_time);
         }
 
         // 计算目标时间
@@ -187,11 +187,11 @@ void MasterClock::loop()
         double master_now = master->now();
         double target_time = master_start_time + pts;
         double delay = target_time - master_now;
-        spdlog::info("delay={:.6f}", delay);
+        SPDLOG_DEBUG("delay={:.6f}", delay);
 
         // 丢帧
         if (delay < drop_threshold_) {
-            spdlog::debug("Drop frame pts={:.6f}, delay={:.6f}", pts, delay);
+            SPDLOG_DEBUG("Drop frame pts={:.6f}, delay={:.6f}", pts, delay);
             continue;
         }
 

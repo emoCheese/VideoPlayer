@@ -13,7 +13,7 @@ bool VideoDecoder::open(const AVStream* stream)
     streamIndex_ = stream->index;
     timeBase_    = stream->time_base;
 
-    spdlog::info("video time_base: {}/{}",
+    SPDLOG_INFO("video time_base: {}/{}",
                  stream->time_base.num,
                  stream->time_base.den);
 
@@ -81,7 +81,8 @@ void VideoDecoder::close()
 
 DecodeResult VideoDecoder::send(const PacketData &pkt)
 {
-    if (closed_ || !codecCtx) return DecodeResult::Error;
+    if (closed_) return DecodeResult::Closed;
+    if (!codecCtx) return DecodeResult::FatalError;
     int ret = -1;
     if (!pkt.pkt || pkt.pkt->data == nullptr)   // flush
         ret = avcodec_send_packet(codecCtx, nullptr);
@@ -91,7 +92,7 @@ DecodeResult VideoDecoder::send(const PacketData &pkt)
     if (ret == AVERROR(EAGAIN))
         return DecodeResult::TryAgain;
     if (ret < 0)
-        return DecodeResult::Error;
+        return DecodeResult::CodecError;
     return DecodeResult::FrameReady;
 }
 
@@ -103,36 +104,51 @@ DecodeResult VideoDecoder::receive(VideoFrame &out)
     if (ret == AVERROR_EOF)
         return DecodeResult::Drained;
     if (ret < 0)
-        return DecodeResult::Error;
+        return DecodeResult::CodecError;
 
-    uint8_t* dst[2] = {
-        nv12Buffer,
-        nv12Buffer + width * height
-    };
-    int linesize[2] = { width, width };
+    // 1️ 创建 NV12 输出 frame
+    AVFrame* dst = av_frame_alloc();
+    if (!dst)
+        return DecodeResult::FatalError;
 
-    // 将 yuv 数据转换为 NV12
+    dst->format = AV_PIX_FMT_NV12;
+    dst->width  = width;
+    dst->height = height;
+
+    if (av_frame_get_buffer(dst, 32) < 0)
+    {
+        av_frame_free(&dst);
+        return DecodeResult::FatalError;
+    }
+
+    // 2️ sws 直接写入 dst 的 buffer
     sws_scale(
         swsCtx,
         frame->data,
         frame->linesize,
         0,
         height,
-        dst,
-        linesize
+        dst->data,
+        dst->linesize
         );
 
+    // 3️ 复制时间戳
+    dst->pts = frame->pts;
+    dst->best_effort_timestamp = frame->best_effort_timestamp;
+
+    // 4️ 输出
     out.width  = width;
     out.height = height;
     out.format = AV_PIX_FMT_NV12;
+
     if (frame->best_effort_timestamp != AV_NOPTS_VALUE)
         out.pts = frame->best_effort_timestamp * av_q2d(timeBase_);
     else
         out.pts = 0.0;
-    out.data.assign(
-        nv12Buffer,
-        nv12Buffer + width * height * 3 / 2
-        );
+
+    out.frame.reset(dst);
+
     av_frame_unref(frame);
+
     return DecodeResult::FrameReady;
 }

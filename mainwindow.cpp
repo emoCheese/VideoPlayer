@@ -46,7 +46,7 @@ void MainWindow::on_btnSelectVideo_clicked()
             QStandardPaths::standardLocations(QStandardPaths::MoviesLocation).first(),
             "视频 (*.mkv *.mp4 *.*)"
             );
-    spdlog::debug("打开视频: {}",  url.toStdString());
+    SPDLOG_DEBUG("打开视频: {}",  url.toStdString());
 
     player = new VideoPlayer(url.toStdString());
     // 需要先设置 videoWidget 和对应的 时钟 clock
@@ -55,7 +55,6 @@ void MainWindow::on_btnSelectVideo_clicked()
 
     // 启动时钟，控制拉帧
     player->startClock([this](std::shared_ptr<VideoFrame> frame_ptr){
-        spdlog::debug("帧渲染 frame pts {}", frame_ptr->pts);
         emit frameReady(frame_ptr);
     });
 

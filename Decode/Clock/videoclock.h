@@ -14,7 +14,7 @@ public:
         pts_.store(0.0, std::memory_order_relaxed);
         paused_.store(false, std::memory_order_relaxed);
 
-        spdlog::info("VideoClock initialized at {:.6f}", now);
+        SPDLOG_INFO("VideoClock initialized at {:.6f}", now);
     }
 
     // ================================
@@ -45,7 +45,7 @@ public:
         base_time_.store(system, std::memory_order_release);
         pts_.store(new_pts, std::memory_order_release);
 
-        // spdlog::debug("VideoClock::set pts={:.6f}", new_pts);
+        // SPDLOG_DEBUG("VideoClock::set pts={:.6f}", new_pts);
     }
 
     // ================================
@@ -61,7 +61,7 @@ public:
             pts_.store(current_pts, std::memory_order_release);
             paused_.store(true, std::memory_order_release);
 
-            spdlog::debug("VideoClock paused at {:.6f}", current_pts);
+            SPDLOG_DEBUG("VideoClock paused at {:.6f}", current_pts);
         }
         else if (!p && current) {
             // 恢复：重新建立基准
@@ -69,7 +69,7 @@ public:
             base_time_.store(system, std::memory_order_release);
             paused_.store(false, std::memory_order_release);
 
-            spdlog::debug("VideoClock resumed");
+            SPDLOG_DEBUG("VideoClock resumed");
         }
     }
 

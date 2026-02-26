@@ -159,45 +159,58 @@ void VideoWidget::uploadFrame(VideoFrame* frame)
     if (!frame)
         return;
 
-    // 如果视频尺寸变化，重新分配纹理内存
-    if (frame->width != texWidth_ || frame->height != texHeight_)
-    {
-        texWidth_  = frame->width;
-        texHeight_ = frame->height;
+    AVFrame* f = frame->frame.get();
+    if (!f)
+        return;
 
-        // Y 纹理：GL_R8 格式，单通道
+    int w = f->width;
+    int h = f->height;
+
+    if (w != texWidth_ || h != texHeight_)
+    {
+        texWidth_  = w;
+        texHeight_ = h;
+
         glBindTexture(GL_TEXTURE_2D, texY_);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_R8,
-                     texWidth_, texHeight_,
+                     w, h,
                      0, GL_RED, GL_UNSIGNED_BYTE, nullptr);
 
-        // UV 纹理：GL_RG8 格式，双通道
-        // 尺寸是 Y 的一半（宽和高都除以 2）
         glBindTexture(GL_TEXTURE_2D, texUV_);
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RG8,
-                     texWidth_/2, texHeight_/2,
+                     w/2, h/2,
                      0, GL_RG, GL_UNSIGNED_BYTE, nullptr);
     }
 
-    // 获取 Y 和 UV 平面指针
-    // NV12 格式：Y 平面在前，UV 平面紧随其后
-    const uint8_t* yPlane  = frame->data.data();
-    const uint8_t* uvPlane = yPlane + texWidth_ * texHeight_;
-
-    // 设置像素存储对齐为 1 字节（避免对齐问题）
-    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-    // 更新 Y 纹理数据
+    // ================= Y =================
     glBindTexture(GL_TEXTURE_2D, texY_);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    texWidth_, texHeight_,
-                    GL_RED, GL_UNSIGNED_BYTE, yPlane);
 
-    // 更新 UV 纹理数据
+    for (int i = 0; i < h; ++i)
+    {
+        glTexSubImage2D(GL_TEXTURE_2D,
+                        0,
+                        0, i,
+                        w, 1,
+                        GL_RED,
+                        GL_UNSIGNED_BYTE,
+                        f->data[0] + i * f->linesize[0]);
+    }
+
+    // ================= UV =================
     glBindTexture(GL_TEXTURE_2D, texUV_);
-    glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0,
-                    texWidth_/2, texHeight_/2,
-                    GL_RG, GL_UNSIGNED_BYTE, uvPlane);
+
+    for (int i = 0; i < h / 2; ++i)
+    {
+        glTexSubImage2D(GL_TEXTURE_2D,
+                        0,
+                        0, i,
+                        w/2, 1,
+                        GL_RG,
+                        GL_UNSIGNED_BYTE,
+                        f->data[1] + i * f->linesize[1]);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 // ==================== 绘制帧 ====================

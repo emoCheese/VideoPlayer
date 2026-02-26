@@ -15,7 +15,7 @@ public:
         offset_.store(0.0, std::memory_order_relaxed);
         paused_.store(false, std::memory_order_relaxed);
 
-        spdlog::info("ExternalClock initialized at {:.6f}", now);
+        SPDLOG_INFO("ExternalClock initialized at {:.6f}", now);
     }
 
     // =====================================
@@ -49,7 +49,7 @@ public:
         // 再设置偏移
         offset_.store(pts, std::memory_order_release);
 
-        spdlog::debug("ExternalClock::set pts={:.6f}", pts);
+        SPDLOG_INFO("ExternalClock::set pts={:.6f}", pts);
     }
 
     // =====================================
@@ -64,14 +64,14 @@ public:
             offset_.store(current_pts, std::memory_order_release);
             paused_.store(true, std::memory_order_release);
 
-            spdlog::debug("ExternalClock paused at {:.6f}", current_pts);
+            SPDLOG_DEBUG("ExternalClock paused at {:.6f}", current_pts);
         }
         else if (!p && current) {
             const double system = getSystemTime();
             base_time_.store(system, std::memory_order_release);
             paused_.store(false, std::memory_order_release);
 
-            spdlog::debug("ExternalClock resumed");
+            SPDLOG_DEBUG("ExternalClock resumed");
         }
     }
 

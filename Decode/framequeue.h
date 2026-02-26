@@ -10,20 +10,21 @@ extern "C" {
 #include <mutex>
 #include <vector>
 #include <spdlog/spdlog.h>
+#include "AVFrameHolder.h"
 
 struct VideoFrame {
     int width = 0;
     int height = 0;
-    AVPixelFormat format = AV_PIX_FMT_NV12;
-    std::vector<uint8_t> data;
+    AVPixelFormat format = AV_PIX_FMT_NONE;
+    AVFrameHolder frame;   // RAII AVFrame
     double pts = 0.0;
     int serial = 0;
 };
 
-struct AudioFrame {
 
-};
+// struct AudioFrame {
 
+// };
 /**
  * @brief The FrameQueue class
  * Frame 环形队列
@@ -128,7 +129,7 @@ public:
         windex_ = 0;
         size_   = 0;
 
-        spdlog::debug("FrameQueue flushed");
+        SPDLOG_DEBUG("FrameQueue flushed");
 
         // 唤醒所有等待线程
         notFull_.notify_all();
@@ -141,7 +142,7 @@ public:
         std::lock_guard<std::mutex> lock(mtx_);
         closed_ = true;
 
-        spdlog::debug("FrameQueue closed");
+        SPDLOG_DEBUG("FrameQueue closed");
 
         notFull_.notify_all();
         notEmpty_.notify_all();

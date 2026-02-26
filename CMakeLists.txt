@@ -43,6 +43,7 @@ qt_add_executable(QFFPlayer
     Decode/Clock/IClockSource.h
     Decode/Clock/videoclock.h Decode/Clock/videoclock.cpp
     Decode/Clock/externalclock.h Decode/Clock/externalclock.cpp
+    Decode/AVFrameHolder.h
 )
 
 target_link_libraries(QFFPlayer
@@ -53,7 +54,12 @@ target_link_libraries(QFFPlayer
         Qt6::OpenGLWidgets
         PkgConfig::FFMPEG
         fmt::fmt
-        spdlog
+        spdlog::spdlog_header_only
+)
+
+target_compile_definitions(QFFPlayer PRIVATE
+    $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_TRACE>
+    $<$<CONFIG:Release>:SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_OFF>
 )
 
 target_include_directories(QFFPlayer

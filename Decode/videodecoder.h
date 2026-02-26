@@ -13,10 +13,14 @@ extern "C" {
 #include "framequeue.h"
 
 enum class DecodeResult {
-    TryAgain,      // 没 packet / EAGAIN
-    FrameReady,   // 成功解出 ≥1 帧
-    Drained,      // flush 后 decoder 已空
-    QueueClosed,  // packet queue 已关闭
+    Ok,             // send 成功
+    TryAgain,       // EAGAIN
+    FrameReady,     // 成功输出一帧
+    NeedMoreInput,  // 内部缓存需要更多 packet
+    Drained,        // 解码器已完全 flush
+    Closed,         // 解码器已关闭
+    CodecError,     // codec 层错误
+    FatalError,     // 不可恢复错误
     Error
 };
 

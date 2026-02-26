@@ -119,7 +119,7 @@ void VideoPlayer::demuxLoop()
             auto res = videoPktQueue.put(std::move(data), true);  // 默认阻塞调用，不会返回 Full
             if (res == PutStatus::Closed) {
                 state = DemuxState::Ended;
-                spdlog::debug("Video Packet Queue Closed, DemuxState::Ended");
+                SPDLOG_DEBUG("Video Packet Queue Closed, DemuxState::Ended");
             }
             // block=true，理论上不会 Full
             break;
@@ -133,7 +133,7 @@ void VideoPlayer::demuxLoop()
             flush.serial = videoPktQueue.serial();
 
             videoPktQueue.put(std::move(flush), true);
-            spdlog::info("Video Flush");
+            SPDLOG_INFO("Video Flush");
             state = DemuxState::Ended;
             break;
         }
@@ -159,6 +159,14 @@ void VideoPlayer::demuxLoop()
     videoPktQueue.close();
 }
 
+/*
+FrameReady → 成功
+TryAgain → 需要对端操作（send 或 receive）
+Drained → 解码器已完全输出完
+Closed → 主动关闭
+CodecError → 当前包错误，可跳过
+FatalError → codecCtx 无效，必须退出
+*/
 void VideoPlayer::videoDecodeLoop()
 {
     DecodeState state = DecodeState::ReceiveFrames;
@@ -167,22 +175,30 @@ void VideoPlayer::videoDecodeLoop()
         case DecodeState::ReceiveFrames: {
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
-            if (r == DecodeResult::FrameReady) {
+            switch (r) {
+            case DecodeResult::FrameReady:
                 if (!videoFrameQueue.push(std::move(frame))) {
-                    spdlog::info("VideoFrameQueue closed, decode loop exit");
+                    SPDLOG_INFO("VideoFrameQueue closed, decode loop exit");
                     return;
                 }
                 break;
-            }
-            if (r == DecodeResult::TryAgain) {
+            case DecodeResult::TryAgain:
                 state = DecodeState::NeedPacket;
                 break;
-            }
-            if (r == DecodeResult::Drained) {
+            case DecodeResult::Drained:
                 state = DecodeState::Ended;
                 break;
+            case DecodeResult::Closed:
+                state = DecodeState::Ended;
+                break;
+            case DecodeResult::CodecError:
+                SPDLOG_WARN("video receive codec error, continue");
+                break; // 丢帧继续
+            case DecodeResult::FatalError:
+                SPDLOG_ERROR("video receive fatal error");
+                state = DecodeState::Error;
+                break;
             }
-            state = DecodeState::Error;
             break;
         }
         case DecodeState::NeedPacket: {
@@ -195,30 +211,55 @@ void VideoPlayer::videoDecodeLoop()
             }
             if (status == GetStatus::Empty)
                 break;
-            if (videoDec.send(pkt) == DecodeResult::Error) {
-                state = DecodeState::Error;
-                spdlog::debug("videoDecodeLoop() VideoDecoder::send error");
-            } else {
+            DecodeResult r = videoDec.send(pkt);
+            switch (r) {
+            case DecodeResult::FrameReady:
                 state = DecodeState::ReceiveFrames;
+                break;
+            case DecodeResult::TryAgain:
+                // send EAGAIN → 必须先 receive
+                state = DecodeState::ReceiveFrames;
+                break;
+            case DecodeResult::CodecError:
+                SPDLOG_WARN("video send codec error, skip packet");
+                state = DecodeState::ReceiveFrames;
+                break;
+            case DecodeResult::FatalError:
+                SPDLOG_ERROR("video send fatal error");
+                state = DecodeState::Error;
+                break;
+            case DecodeResult::Closed:
+                state = DecodeState::Ended;
+                break;
+            default:
+                break;
             }
             break;
         }
         case DecodeState::Draining: {
             VideoFrame frame;
             DecodeResult r = videoDec.receive(frame);
-            if (r == DecodeResult::FrameReady) {
+            switch (r) {
+            case DecodeResult::FrameReady:
                 if (!videoFrameQueue.push(std::move(frame)))
                     return;
                 break;
-            }
-            if (r == DecodeResult::Drained) {
+            case DecodeResult::Drained:
+                state = DecodeState::Ended;
+                break;
+            case DecodeResult::TryAgain:
+                // 等待内部缓冲释放
+                break;
+            case DecodeResult::CodecError:
+                SPDLOG_WARN("drain codec error");
+                break;
+            case DecodeResult::FatalError:
+                state = DecodeState::Error;
+                break;
+            case DecodeResult::Closed:
                 state = DecodeState::Ended;
                 break;
             }
-            if (r == DecodeResult::TryAgain) {
-                break;
-            }
-            state = DecodeState::Error;
             break;
         }
         case DecodeState::Ended:
@@ -229,4 +270,3 @@ void VideoPlayer::videoDecodeLoop()
     }
     videoFrameQueue.close();
 }
-
