@@ -17,7 +17,7 @@ AudioDecoder::~AudioDecoder()
     close();
 }
 
-bool AudioDecoder::open(const AVStream* stream)
+bool AudioDecoder::open(const AVStream* stream, int deviceSampleRate, int deviceChannels)
 {
     if (!stream || !stream->codecpar)
         return false;
@@ -56,10 +56,12 @@ bool AudioDecoder::open(const AVStream* stream)
     int             srcRate   = codecCtx_->sample_rate;
     AVSampleFormat  srcFmt    = codecCtx_->sample_fmt;
 
-    // -------- 目标参数（可配置，此处硬编码为 2 通道 S16 48kHz）--------
-    dstSampleRate_ = 48000;                     // 目标采样率
+    dstSampleRate_ = deviceSampleRate;
+
+    // -------- 目标参数--------
+    dstSampleRate_ = deviceSampleRate;          // 目标采样率
     dstSampleFmt_  = AV_SAMPLE_FMT_FLT;         // 目标格式 标准 PCM（float32 interleaved）
-    dstChannels_   = 2;                         // 目标声道数
+    dstSampleRate_ = deviceSampleRate;          // 目标声道数
 
     // -------- 初始化 swr --------
 #if FFMPEG_NEW_CHANNEL_LAYOUT
@@ -194,6 +196,12 @@ DecodeResult AudioDecoder::receive(AudioBlock &out)
     out.sampleRate = dstSampleRate_;        // 输出音频的采样率
     // 输出音频的时长（秒），由样本数除以采样率计算得出
     out.duration = converted / (double)dstSampleRate_;
+
+    SPDLOG_DEBUG(
+        "samples={} duration={}",
+        converted,
+        converted / (double)dstSampleRate_
+        );
 
     // ---------- 计算 pts ----------
     if (frame_->best_effort_timestamp != AV_NOPTS_VALUE)

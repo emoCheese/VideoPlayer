@@ -24,7 +24,7 @@ public:
     AudioDecoder() = default;
     ~AudioDecoder();
 
-    bool open(const AVStream *stream);
+    bool open(const AVStream* stream, int deviceSampleRate, int deviceChannels);
     void close();
 
     DecodeResult send(const PacketData &pkt);

@@ -14,7 +14,7 @@ public:
                          IClockSource& clock);
     ~AudioOutput();
 
-    bool open(int sampleRate, int channels);
+    bool open(  );
 
     void start();
     void stop();
@@ -33,8 +33,10 @@ public:
      */
     void seek(int serial);
 
-    auto audioStream() const { return stream_; }
+    inline auto audioStream() const { return stream_; }
 
+    inline int sampleRate() const noexcept { return sampleRate_; }
+    inline int channels() const noexcept { return channels_; }
 
 private:
     void threadFunc();

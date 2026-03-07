@@ -53,8 +53,12 @@ void MainWindow::on_btnSelectVideo_clicked()
     // 需要先设置 videoWidget 和对应的 时钟 clock
     ui->videoWidget->setVideoPlayer(player);
     // 启动解码线程
-    player->start();
-
+    try {
+        player->start();
+    } catch (std::runtime_error err) {
+        fmt::println("VideoPlayer start failed: {}", err.what());
+        return;
+    }
     // 启动时钟，控制拉帧
     player->startAudioClock([this](std::shared_ptr<VideoFrame> frame_ptr){
         emit frameReady(frame_ptr);

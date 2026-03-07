@@ -33,7 +33,11 @@ void VideoPlayer::start()
         SPDLOG_ERROR("demux open failed");
         throw std::runtime_error("demux open failed");
     }
-    if (!audioDec_.open(demux_.audioStream())) {
+    // 2 先初始化 AudioOutput 再打开 decoder
+    audioOutput_.open();
+    if (!audioDec_.open(demux_.audioStream(),
+                        audioOutput_.sampleRate(),
+                        audioOutput_.channels())) {
         SPDLOG_ERROR("audio decoder open failed");
         throw std::runtime_error("audio decoder open failed");
     }
@@ -42,29 +46,11 @@ void VideoPlayer::start()
         throw std::runtime_error("video decoder open failed");
     }
 
-    // 2 启动 AudioOutput
-    auto* codec = demux_.audioStream()->codecpar;
-    audioOutput_.open(codec->sample_rate, codec->ch_layout.nb_channels);
+    // 4️ 启动线程
     audioOutput_.start();
-
-    // 3. 启动解复用线程 demux thread
-    demuxThread_ = std::thread([this]() {
-        SPDLOG_DEBUG("demux loop thread start\n");
-        demuxLoop();
-        SPDLOG_DEBUG("demux loop thread end\n");
-    });
-    // 4. 启动解码线程 decode thread
-    audioThread_ = std::thread([this]() {
-        SPDLOG_DEBUG("audio decode loop thread start\n");
-        audioDecodeLoop();
-        SPDLOG_DEBUG("audio decode loop thread end\n");
-    });
-
-    videoThread_ = std::thread([this]() {
-        SPDLOG_DEBUG("video decode loop thread start\n");
-        videoDecodeLoop();
-        SPDLOG_DEBUG("video decode loop thread end\n");
-    });
+    demuxThread_ = std::thread(&VideoPlayer::demuxLoop, this);
+    audioThread_ = std::thread(&VideoPlayer::audioDecodeLoop, this);
+    videoThread_ = std::thread(&VideoPlayer::videoDecodeLoop, this);
 }
 
 void VideoPlayer::stop()
