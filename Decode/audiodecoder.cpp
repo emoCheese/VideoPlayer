@@ -170,7 +170,6 @@ DecodeResult AudioDecoder::receive(AudioBlock &out)
         AV_ROUND_UP
         );
 
-    // ---------- 分配输出 buffer ----------
     out.data.resize(dstNbSamples * dstChannels_);
 
     uint8_t* outData[1] = {
@@ -188,6 +187,8 @@ DecodeResult AudioDecoder::receive(AudioBlock &out)
     if (converted < 0)
         return DecodeResult::CodecError;
 
+    // ---------- 分配输出 buffer ----------
+    out.data.resize(converted * dstChannels_);
     out.nbSamples  = converted;             // 存储实际转换得到的样本数（每个通道）
     out.channels   = dstChannels_;          // 输出音频的通道数
     out.sampleRate = dstSampleRate_;        // 输出音频的采样率

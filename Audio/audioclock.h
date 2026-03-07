@@ -4,53 +4,53 @@
 #include "IClockSource.h"
 #include <SDL3/SDL.h>
 #include <mutex>
+
 class AudioClock : public IClockSource
 {
 public:
+    void attachStream(SDL_AudioStream* stream,
+                      int sampleRate,
+                      int channels)
+    {
+        stream_ = stream;
+        sampleRate_ = sampleRate;
+        channels_ = channels;
+    }
 
     void set(double pts) override
     {
         std::lock_guard lock(mutex_);
-
-        pts_ = pts;
-        last_system_time_ = system_now();
+        last_pts_ = pts;
     }
 
     double now() const override
     {
         std::lock_guard lock(mutex_);
 
-        if (paused_)
-            return pts_;
+        if (!stream_)
+            return last_pts_;
 
-        return pts_ + (system_now() - last_system_time_);
+        int queued = SDL_GetAudioStreamQueued(stream_);
+
+        double queued_sec =
+            queued /
+            (double)(sizeof(float) * channels_ * sampleRate_);
+
+        return last_pts_ - queued_sec;
     }
 
     void pause(bool p) override
     {
-        std::lock_guard lock(mutex_);
-
-        if (p && !paused_) {
-            pts_ = now();
-            paused_ = true;
-        }
-        else if (!p && paused_) {
-            last_system_time_ = system_now();
-            paused_ = false;
-        }
+        paused_ = p;
     }
 
 private:
+    SDL_AudioStream* stream_ = nullptr;
 
-    static double system_now()
-    {
-        using Clock = std::chrono::steady_clock;
-        return std::chrono::duration<double>(
-                   Clock::now().time_since_epoch()).count();
-    }
+    int sampleRate_ = 0;
+    int channels_ = 0;
 
-    double pts_ = 0.0;
-    double last_system_time_ = 0.0;
+    double last_pts_ = 0;
 
     bool paused_ = false;
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include "audioclock.h"
 #include "framequeue.h"
 #include <SDL3/SDL.h>
 #include "IClockSource.h"

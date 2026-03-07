@@ -36,7 +36,7 @@ bool AudioOutput::open(int sampleRate, int channels)
     spec.channels = channels;
 
     maxQueuedBytes_ =
-        sampleRate * channels * sizeof(float) * 4; // 4s buffer
+        sampleRate * channels * sizeof(float) * 2; // 4s buffer
 
     stream_ = SDL_OpenAudioDeviceStream(
         SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
@@ -57,8 +57,8 @@ bool AudioOutput::open(int sampleRate, int channels)
         return false;
     }
     // 类型检查防止出错
-    // dynamic_cast<AudioClock&>(clock_)
-    //     .attachStream(stream_, sampleRate, channels);
+    dynamic_cast<AudioClock&>(clock_)
+        .attachStream(stream_, sampleRate, channels);
 
     sampleRate_ = sampleRate;
     channels_ = channels;
@@ -104,49 +104,37 @@ void AudioOutput::threadFunc()
 {
     SPDLOG_DEBUG("Auido Output thread started");
     AudioBlock block;
-    const int targetQueued = maxQueuedBytes_ / 2;
+    const int targetQueued =
+        sampleRate_ * channels_ *
+        sizeof(float) * 0.2; // 200ms
     while (running_)
     {
         if (paused_)
         {
-            SDL_Delay(10);  // 延时毫秒
+            SDL_Delay(10);
             continue;
         }
 
         int queued = SDL_GetAudioStreamQueued(stream_);
 
-        if (queued < targetQueued) {
-            if (!fifo_.pop(block))
-            {
-                std::pmr::monotonic_buffer_resource threadPool(1024 * 1024);
-                int silenceSamples = sampleRate_ * channels_ * 0.02;
-                std::pmr::vector<float> silence(silenceSamples, 0.0f, &threadPool);
-
-                SDL_PutAudioStreamData(
-                    stream_,
-                    silence.data(),
-                    silence.size() * sizeof(float));
-
-                continue;
-            }
-
-            if (block.serial != audioPktQueue_.currentSerial())
-                continue;
-
-            SDL_PutAudioStreamData(
-                stream_,
-                block.data.data(),
-                block.data.size() * sizeof(float)
-                );
-            // 更新时钟
-            // SPDLOG_DEBUG("音频消费...");
-
-            double block_duration =
-                block.data.size() / (double)(sampleRate_ * channels_);
-
-            clock_.set(block.pts + block_duration);
-        } else {
+        if (queued >= targetQueued)
+        {
             SDL_Delay(1);
+            continue;
         }
+
+        if (!fifo_.pop(block))
+            continue;
+
+        if (block.serial != audioPktQueue_.currentSerial())
+            continue;
+
+        SDL_PutAudioStreamData(
+            stream_,
+            block.data.data(),
+            block.data.size() * sizeof(float)
+            );
+
+        clock_.set(block.pts);
     }
 }
