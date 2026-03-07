@@ -1,6 +1,8 @@
 #ifndef VIDEOPLAYER_H
 #define VIDEOPLAYER_H
 
+#include "AudioOuput.h"
+#include "audiodecoder.h"
 #include "demuxer.h"
 #include "videodecoder.h"
 #include "masterclock.h"
@@ -26,6 +28,8 @@ enum class DemuxState {
 
 class VideoPlayer {
 public:
+    using FrameCallback = void(*)(std::shared_ptr<VideoFrame>, void* ctx);
+
     VideoPlayer(const std::string& u);
     ~VideoPlayer();
 
@@ -37,31 +41,45 @@ public:
 
     void seek(double seconds);  // todo 待实现
 
-    void startClock(std::function<void(std::shared_ptr<VideoFrame>)> cb);
+    inline int currentSerial() const noexcept { return audioPktQueue_.serial(); }
 
-    MasterClock& clock() { return masterClock; }
+    void startExternalClock(std::function<void(std::shared_ptr<VideoFrame>)> cb);
+    void startAudioClock(std::function<void(std::shared_ptr<VideoFrame>)> cb);
+    void startClock(FrameCallback cb);
+
+    MasterClock& clock() { return masterClock_; }
 
 private:
+    void initClockSource();
+
+    void flushPackage();
     void demuxLoop();
+    void audioDecodeLoop();
     void videoDecodeLoop();
 
 private:
-    std::string url;
+    std::string url_;
 
-    Demuxer demux;
-    VideoDecoder videoDec;
-    MasterClock masterClock;
+    Demuxer demux_;
+    VideoDecoder videoDec_;
+    AudioDecoder audioDec_;
+    MasterClock masterClock_;
 
-    IClockSource* videoClock {nullptr};
-    IClockSource* audioClock {nullptr};
-    IClockSource* externalClock {nullptr};
+    IClockSource* videoClock_ {nullptr};    // 未实现
+    IClockSource* audioClock_ {nullptr};
+    IClockSource* externalClock_ {nullptr};
 
-    PacketQueue videoPktQueue;
-    FrameQueue<VideoFrame>  videoFrameQueue;
-    // FrameQueue<AudioFrame>  audioFrameQueue;
+    PacketQueue videoPktQueue_;
+    PacketQueue audioPktQueue_;
+    FrameQueue<VideoFrame> videoFrameQueue_;
+    FrameQueue<AudioBlock> audioFifo_;
 
-    std::thread demuxThread;
-    std::thread videoThread;
+
+    AudioOutput audioOutput_;
+
+    std::thread demuxThread_;
+    std::thread audioThread_;
+    std::thread videoThread_;
 
     std::atomic<bool> abort_{false};
 };

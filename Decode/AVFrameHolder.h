@@ -5,7 +5,10 @@
 extern "C" {
 #include <libavutil/frame.h>
 }
-
+/**
+ * @brief The AVFrameHolder class
+ * 持有 AVFrame 的 RAII 封装
+ */
 class AVFrameHolder {
 public:
     AVFrameHolder() = default;

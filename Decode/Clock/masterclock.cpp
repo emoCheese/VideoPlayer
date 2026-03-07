@@ -1,5 +1,4 @@
 #include "masterclock.h"
-#include "framequeue.h"
 #include <chrono>
 #include <spdlog/spdlog.h>
 
@@ -14,6 +13,15 @@ void MasterClock::start(Callback cb)
     callback_ = cb;
     running_ = true;
     thread_ = std::thread(&MasterClock::loop, this);
+}
+
+void MasterClock::start(CallbackPtr cb)
+{
+    callback_ptr_ = cb;
+    running_ = true;
+    thread_ = std::thread([this](){
+        // loop2(callback_ptr_);
+    });
 }
 
 void MasterClock::stop()
@@ -153,8 +161,9 @@ void MasterClock::loop()
     while (running_) {
 
         VideoFrame frame;
-        if (!queue_.pop(frame))
+        if (!queue_.pop(frame)) {
             break;
+        }
 
         while (paused_ && running_)
             std::this_thread::sleep_for(std::chrono::milliseconds(2));
@@ -187,7 +196,7 @@ void MasterClock::loop()
         double master_now = master->now();
         double target_time = master_start_time + pts;
         double delay = target_time - master_now;
-        SPDLOG_DEBUG("delay={:.6f}", delay);
+        SPDLOG_DEBUG("delay={:.6f}, Video Frame Queue Size: {}", delay, queue_.size());
 
         // 丢帧
         if (delay < drop_threshold_) {
@@ -197,7 +206,6 @@ void MasterClock::loop()
 
         // Hybrid Sleep
         if (delay > 0) {
-
             if (delay > 0.002) {
                 std::this_thread::sleep_for(
                     std::chrono::microseconds(

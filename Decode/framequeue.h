@@ -21,15 +21,21 @@ struct VideoFrame {
     int serial = 0;
 };
 
+struct AudioBlock
+{
+    std::vector<float> data;    // interleaved
+    int sampleRate  = 0;
+    int channels    = 0;
+    int nbSamples   = 0;
+    double duration = 0.0;      // 持续时间
+    double pts = 0.0;           // 展示时间戳
+    int serial = 0;             // 序列号
+};
 
-// struct AudioFrame {
-
-// };
 /**
  * @brief The FrameQueue class
  * Frame 环形队列
  */
-
 template<typename T>
 class FrameQueue {
 public:
@@ -124,11 +130,12 @@ public:
     void flush()
     {
         std::lock_guard<std::mutex> lock(mtx_);
-
         rindex_ = 0;
         windex_ = 0;
         size_   = 0;
-
+        for (size_t i = 0; i < size_; ++i) {
+            queue_[(rindex_ + i) % capacity_] = T{};
+        }
         SPDLOG_DEBUG("FrameQueue flushed");
 
         // 唤醒所有等待线程

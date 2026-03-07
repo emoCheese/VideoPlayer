@@ -6,6 +6,7 @@
 #include <memory>
 #include <thread>
 #include "IClockSource.h"
+#include "framequeue.h"
 
 template<typename T>
 class FrameQueue;
@@ -21,6 +22,7 @@ class MasterClock
 public:
     // 将 VideoFrame 传递给外部渲染
     using Callback = std::function<void(std::shared_ptr<VideoFrame>)>;
+    using CallbackPtr = void(*)(std::shared_ptr<VideoFrame>, void* ctx);
 
     enum class SyncType {
         Audio,
@@ -31,6 +33,7 @@ public:
     MasterClock(FrameQueue<VideoFrame>& queue);
 
     void start(Callback cb);
+    void start(CallbackPtr cb);
     void stop();
     void pause(bool p);
 
@@ -46,6 +49,7 @@ private:
 private:
     FrameQueue<VideoFrame>& queue_;
     Callback callback_;
+    CallbackPtr callback_ptr_;
 
     std::atomic<bool> running_{false};
     std::atomic<bool> paused_{false};
@@ -59,7 +63,7 @@ private:
 
     int current_serial_ {-1};
 
-    const double drop_threshold_ {-0.03};
+    const double drop_threshold_ {-0.08};
     const double fine_wait_threshold_ {0.002};
 };
 

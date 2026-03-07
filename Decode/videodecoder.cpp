@@ -86,14 +86,19 @@ DecodeResult VideoDecoder::send(const PacketData &pkt)
     int ret = -1;
     if (!pkt.pkt || pkt.pkt->data == nullptr)   // flush
         ret = avcodec_send_packet(codecCtx, nullptr);
-    else
+    else {
+        if (pkt.pkt) {
+            SPDLOG_INFO("Video packet size: {}, pts: {}, dts: {}",
+                        pkt.pkt->size, pkt.pkt->pts, pkt.pkt->dts);
+        }
         ret = avcodec_send_packet(codecCtx, pkt.pkt.get());
+    }
 
     if (ret == AVERROR(EAGAIN))
         return DecodeResult::TryAgain;
     if (ret < 0)
         return DecodeResult::CodecError;
-    return DecodeResult::FrameReady;
+    return DecodeResult::Ok;
 }
 
 DecodeResult VideoDecoder::receive(VideoFrame &out)

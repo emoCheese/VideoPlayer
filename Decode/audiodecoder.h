@@ -15,15 +15,8 @@ extern "C" {
 }
 
 
-struct AudioFrame {
-    std::vector<float> data;   // interleaved
-    int sampleRate = 0;
-    int channels   = 0;
-    int nbSamples  = 0;
+struct AudioBlock;
 
-    double pts = 0.0;
-    int serial = 0;
-};
 
 
 class AudioDecoder {
@@ -35,11 +28,17 @@ public:
     void close();
 
     DecodeResult send(const PacketData &pkt);
-    DecodeResult receive(AudioFrame &out);
+    DecodeResult receive(AudioBlock &out);
+
+    // seek / flush
+    void reset();
+
+    // 倍速播放
+    void setSpeed(double speed) { speed_ = speed; }
 
     AVRational timeBase() const { return timeBase_; }
     int streamIndex() const { return streamIndex_; }
-    double getPtsSec() const;
+    // double getPtsSec() const;
 
 private:
     AVCodecContext *codecCtx_ = nullptr;
@@ -55,5 +54,6 @@ private:
 
     int dstChannels_ = 2;
     std::atomic<bool> closed_{false};
+    double speed_ = 1.0;
 };
 #endif // AUDIODECODER_H

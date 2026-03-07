@@ -25,12 +25,13 @@ public:
 
     // 读一个 packet（EOF 返回 false）
     bool readFrame(PacketData& out);
+    bool readVideoFrame(PacketData& out);
 
     const AVStream* videoStream() const;
     const AVStream* audioStream() const;
 
-    int getVideoStreamIndex() const;
-    int getAudioStreamIndex() const;
+    inline int getVideoStreamIndex() const { return m_videoStreamIndex; };
+    inline int getAudioStreamIndex() const { return m_audioStreamIndex; };
 
 private:
     std::string m_url;

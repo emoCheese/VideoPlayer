@@ -80,6 +80,26 @@ bool Demuxer::seek(double seconds)
 
 bool Demuxer::readFrame(PacketData &out)
 {
+    int ret = av_read_frame(m_fmtCtx, m_pkt);
+    if (ret < 0) {
+        out.pkt = nullptr;
+        out.isFlush = false;
+        return false;
+    }
+
+    PacketPtr p = make_packet();
+    av_packet_move_ref(p.get(), m_pkt); // 这里做 move 操作后 m_pkt 失效
+    out.pkt = std::move(p);
+    out.isFlush = false;
+    out.streamIndex = out.pkt->stream_index;  // 区分音频/视频包
+
+
+    av_packet_unref(m_pkt);
+    return true;
+}
+
+bool Demuxer::readVideoFrame(PacketData &out)
+{
     while (true) {
         int ret = av_read_frame(m_fmtCtx, m_pkt);
         if (ret < 0) {
@@ -87,15 +107,15 @@ bool Demuxer::readFrame(PacketData &out)
             out.isFlush = false;
             return false;
         }
-        if (m_pkt->stream_index == m_videoStreamIndex) {
+        if (m_pkt->stream_index == m_videoStreamIndex) // 只接受视频包
+        {
             PacketPtr p = make_packet();
             av_packet_move_ref(p.get(), m_pkt);
             out.pkt = std::move(p);
             out.isFlush = false;
+            out.streamIndex = out.pkt->stream_index;
             av_packet_unref(m_pkt);
             return true;
-        } else if (m_pkt->stream_index == m_audioStreamIndex) {
-            // todo
         }
         av_packet_unref(m_pkt); // 丢弃非视频包
     }
@@ -104,7 +124,3 @@ bool Demuxer::readFrame(PacketData &out)
 const AVStream *Demuxer::videoStream() const { return m_fmtCtx ? m_fmtCtx->streams[m_videoStreamIndex] : nullptr; }
 
 const AVStream *Demuxer::audioStream() const { return m_fmtCtx ? m_fmtCtx->streams[m_audioStreamIndex] : nullptr; }
-
-int Demuxer::getVideoStreamIndex() const { return m_videoStreamIndex; }
-
-int Demuxer::getAudioStreamIndex() const { return m_audioStreamIndex; }

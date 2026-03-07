@@ -6,6 +6,7 @@
 #include <spdlog/spdlog.h>
 #include <videowidget.h>
 
+
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
     , ui(new Ui::MainWindow)
@@ -50,11 +51,12 @@ void MainWindow::on_btnSelectVideo_clicked()
 
     player = new VideoPlayer(url.toStdString());
     // 需要先设置 videoWidget 和对应的 时钟 clock
-    ui->videoWidget->setVideoPlayer(player);    
+    ui->videoWidget->setVideoPlayer(player);
+    // 启动解码线程
     player->start();
 
     // 启动时钟，控制拉帧
-    player->startClock([this](std::shared_ptr<VideoFrame> frame_ptr){
+    player->startAudioClock([this](std::shared_ptr<VideoFrame> frame_ptr){
         emit frameReady(frame_ptr);
     });
 

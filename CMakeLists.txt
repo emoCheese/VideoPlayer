@@ -10,6 +10,7 @@ find_package(Qt6 6.5 REQUIRED COMPONENTS OpenGL OpenGLWidgets)
 find_package(PkgConfig REQUIRED)
 find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(SDL3 REQUIRED)
 
 qt_standard_project_setup()
 
@@ -18,8 +19,8 @@ pkg_check_modules(FFMPEG REQUIRED IMPORTED_TARGET
     libavformat
     libavutil
     libswscale
+    libswresample
 )
-pkg_check_modules(GLFW REQUIRED IMPORTED_TARGET glfw3)
 
 # 在 release 时加上 WIN32, WIN32 会阻碍 stdout 输出
 qt_add_executable(QFFPlayer
@@ -44,6 +45,10 @@ qt_add_executable(QFFPlayer
     Decode/Clock/videoclock.h Decode/Clock/videoclock.cpp
     Decode/Clock/externalclock.h Decode/Clock/externalclock.cpp
     Decode/AVFrameHolder.h
+
+
+    Audio/AudioOuput.h Audio/AudioOuput.cpp
+    Audio/audioclock.h Audio/audioclock.cpp
 )
 
 target_link_libraries(QFFPlayer
@@ -55,6 +60,7 @@ target_link_libraries(QFFPlayer
         PkgConfig::FFMPEG
         fmt::fmt
         spdlog::spdlog_header_only
+        SDL3::SDL3-shared
 )
 
 target_compile_definitions(QFFPlayer PRIVATE
@@ -67,6 +73,7 @@ target_include_directories(QFFPlayer
     ${CMAKE_CURRENT_SOURCE_DIR}/VideoWidget
     ${CMAKE_CURRENT_SOURCE_DIR}/Decode
     ${CMAKE_CURRENT_SOURCE_DIR}/Decode/Clock
+    ${CMAKE_CURRENT_SOURCE_DIR}/Audio
 )
 
 message(STATUS "FFmpeg include dirs: ${FFMPEG_INCLUDE_DIRS}")

@@ -1,4 +1,5 @@
 #include "packetqueue.h"
+#include <spdlog/spdlog.h>
 
 PutStatus PacketQueue::put(PacketData &&data, bool block) noexcept {
     std::unique_lock lock(mutex_);
@@ -62,6 +63,7 @@ void PacketQueue::flush() noexcept {
 }
 
 void PacketQueue::close() noexcept {
+    SPDLOG_INFO("PacketQueue Close");
     {
         std::lock_guard lock(mutex_);
         closed_ = true;

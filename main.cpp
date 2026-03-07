@@ -41,8 +41,10 @@ static void registerMyType()
 
 int main(int argc, char *argv[])
 {
+#ifdef WIN32
     SetConsoleOutputCP(CP_UTF8);
     SetConsoleCP(CP_UTF8);
+#endif
     initLogger();
     registerMyType();
     QApplication a(argc, argv);

@@ -3,6 +3,8 @@
 
 #include <QMainWindow>
 #include "Decode/videoplayer.h"
+#include "framequeue.h"
+#include <memory>
 
 QT_BEGIN_NAMESPACE
 namespace Ui {
@@ -13,15 +15,23 @@ QT_END_NAMESPACE
 class MainWindow : public QMainWindow
 {
     Q_OBJECT
-
 public:
     MainWindow(QWidget *parent = nullptr);
     ~MainWindow();
 
+    static void frameCallback(std::shared_ptr<VideoFrame> frame, void* ctx)
+    {
+        if (!ctx) return;
+        auto mainwindow = static_cast<MainWindow*>(ctx);
+        mainwindow->emitFrameReady(frame);
+    }
+
+    inline void emitFrameReady(std::shared_ptr<VideoFrame> f) { emit frameReady(f); }
 signals:
     void frameReady(std::shared_ptr<VideoFrame>);
 private:
     void initUI();
+
 private slots:
     void on_btnPlay_clicked();
 

@@ -1,5 +1,5 @@
 #include "videowidget.h"
-#include "VideoPlayer.h"
+#include "videoplayer.h"
 #include "ClockBase.h"
 #include <QDebug>
 #include <spdlog/spdlog.h>

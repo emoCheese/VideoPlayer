@@ -29,8 +29,9 @@ inline PacketPtr make_packet() {
 
 struct PacketData {
     PacketPtr pkt;
-    int serial;
-    bool isFlush = false;   // 当flush时需要主动设置
+    int serial = 0;
+    bool isFlush = false;
+    int streamIndex = -1;
 };
 
 enum class PutStatus {
@@ -64,7 +65,11 @@ public:
 
     void start() noexcept;
 
-    int serial() const noexcept { return serial_; }
+    int serial() const noexcept { std::lock_guard lock(mutex_); return serial_; }
+
+    int size() const { std::lock_guard lock(mutex_); return queue_.size(); };
+
+    inline int currentSerial() const noexcept { std::lock_guard lock(mutex_); return serial_; }
 
 private:
     std::deque<PacketData> queue_;

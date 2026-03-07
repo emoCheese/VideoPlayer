@@ -13,15 +13,13 @@ extern "C" {
 #include "framequeue.h"
 
 enum class DecodeResult {
-    Ok,             // send 成功
-    TryAgain,       // EAGAIN
-    FrameReady,     // 成功输出一帧
-    NeedMoreInput,  // 内部缓存需要更多 packet
-    Drained,        // 解码器已完全 flush
-    Closed,         // 解码器已关闭
-    CodecError,     // codec 层错误
-    FatalError,     // 不可恢复错误
-    Error
+    Ok,            // send 成功（packet accepted）
+    TryAgain,      // EAGAIN
+    FrameReady,    // receive 成功输出一帧
+    Drained,       // receive 返回 EOF
+    Closed,
+    CodecError,
+    FatalError
 };
 
 class VideoDecoder {
@@ -38,7 +36,7 @@ public:
     AVRational timeBase() const { return timeBase_; }
     int streamIndex() const { return streamIndex_; }
 
-    double getPtsSec() const;
+    // double getPtsSec() const;
 
 private:
     AVCodecContext* codecCtx = nullptr;
