@@ -145,6 +145,8 @@ void AudioOutput::threadFunc()
             block.data.size() * sizeof(float)
             );
 
+        // 更新时钟
         clock_.set(block.pts);
     }
+    SPDLOG_DEBUG("Auido Output thread exit");
 }

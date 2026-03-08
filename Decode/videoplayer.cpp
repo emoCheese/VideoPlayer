@@ -91,11 +91,13 @@ void VideoPlayer::stop()
 void VideoPlayer::pause()
 {
     masterClock_.pause(true);
+    audioOutput_.audioPause(true);
 }
 
 void VideoPlayer::play()
 {
     masterClock_.pause(false);
+    audioOutput_.audioPause(false);
 }
 
 void VideoPlayer::seek(double seconds)

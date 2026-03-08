@@ -14,7 +14,7 @@ public:
                          IClockSource& clock);
     ~AudioOutput();
 
-    bool open(  );
+    bool open();
 
     void start();
     void stop();

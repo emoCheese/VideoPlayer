@@ -73,6 +73,21 @@ public:
         }
     }
 
+    void setSpeed(double speed) override
+    {
+
+    }
+
+    double speed() const override
+    {
+        return 1;
+    }
+
+    void reset() override
+    {
+
+    }
+
 private:
     static double getSystemTime()
     {

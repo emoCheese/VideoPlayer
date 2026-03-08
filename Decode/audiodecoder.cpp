@@ -197,11 +197,11 @@ DecodeResult AudioDecoder::receive(AudioBlock &out)
     // 输出音频的时长（秒），由样本数除以采样率计算得出
     out.duration = converted / (double)dstSampleRate_;
 
-    SPDLOG_DEBUG(
-        "samples={} duration={}",
-        converted,
-        converted / (double)dstSampleRate_
-        );
+    // SPDLOG_DEBUG(
+    //     "samples={} duration={}",
+    //     converted,
+    //     converted / (double)dstSampleRate_
+    //     );
 
     // ---------- 计算 pts ----------
     if (frame_->best_effort_timestamp != AV_NOPTS_VALUE)
