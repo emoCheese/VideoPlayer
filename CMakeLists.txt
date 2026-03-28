@@ -50,6 +50,7 @@ qt_add_executable(QFFPlayer
 
     Audio/AudioOuput.h Audio/AudioOuput.cpp
     Audio/audioclock.h Audio/audioclock.cpp
+    Decode/ThreadSafeQueue.h
 )
 
 target_link_libraries(QFFPlayer

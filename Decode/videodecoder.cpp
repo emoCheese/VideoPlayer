@@ -1,97 +1,106 @@
 #include "videodecoder.h"
 #include <spdlog/spdlog.h>
 
-VideoDecoder::~VideoDecoder() { close(); }
+VideoDecoder::VideoDecoder() {}
+
+VideoDecoder::~VideoDecoder() {
+    stop();
+    close();
+}
 
 bool VideoDecoder::open(const AVStream* stream)
 {
     if (!stream || !stream->codecpar)
         return false;
 
-    close();
-    closed_ = false;
-    streamIndex_ = stream->index;
-    timeBase_    = stream->time_base;
-
-    SPDLOG_INFO("video time_base: {}/{}",
-                 stream->time_base.num,
-                 stream->time_base.den);
-
-    const AVCodec* codec = avcodec_find_decoder(stream->codecpar->codec_id);
+    const AVCodec* codec =
+        avcodec_find_decoder(stream->codecpar->codec_id);
     if (!codec)
         return false;
 
-    codecCtx = avcodec_alloc_context3(codec);
-    if (!codecCtx)
+    codecCtx_ = avcodec_alloc_context3(codec);
+    if (!codecCtx_)
         return false;
 
-    codecCtx->flags2 |= AV_CODEC_FLAG2_SHOW_ALL;  // 确保输出所有帧
-    if (avcodec_parameters_to_context(codecCtx, stream->codecpar) < 0)
+    if (avcodec_parameters_to_context(codecCtx_, stream->codecpar) < 0)
         return false;
 
-    if (avcodec_open2(codecCtx, codec, nullptr) < 0)
+    if (avcodec_open2(codecCtx_, codec, nullptr) < 0)
         return false;
 
-    frame = av_frame_alloc();
-    if (!frame)
+    frame_ = av_frame_alloc();
+    if (!frame_)
         return false;
 
-    width  = codecCtx->width;
-    height = codecCtx->height;
-    srcPixFmt = codecCtx->pix_fmt;
-
-    swsCtx = sws_getContext(
-        width, height, srcPixFmt,
-        width, height, AV_PIX_FMT_NV12,
-        SWS_BILINEAR,
-        nullptr, nullptr, nullptr
-        );
-    if (!swsCtx)
-        return false;
+    streamIndex_ = stream->index;
+    timeBase_ = stream->time_base;
 
     return true;
 }
 
 void VideoDecoder::close()
 {
-    closed_ = true;
-    if (codecCtx) {
-        avcodec_free_context(&codecCtx);
-        codecCtx = nullptr;
+    if (codecCtx_) {
+        avcodec_free_context(&codecCtx_);
+        codecCtx_ = nullptr;
     }
-    if (frame) {
-        av_frame_free(&frame);
-        frame = nullptr;
-    }
-    if (swsCtx) {
-        sws_freeContext(swsCtx);
-        swsCtx = nullptr;
+    if (frame_) {
+        av_frame_free(&frame_);
+        frame_ = nullptr;
     }
 }
 
-DecodeResult VideoDecoder::send(const PacketData &pkt)
-{
-    if (closed_) return DecodeResult::Closed;
-    if (!codecCtx) return DecodeResult::FatalError;
-    int ret = -1;
-    if (!pkt.pkt || pkt.pkt->data == nullptr)   // flush
-        ret = avcodec_send_packet(codecCtx, nullptr);
-    else {
-        // SPDLOG_INFO("Video packet size: {}, pts: {}, dts: {}",
-        //             pkt.pkt->size, pkt.pkt->pts, pkt.pkt->dts);
-        ret = avcodec_send_packet(codecCtx, pkt.pkt.get());
-    }
+void VideoDecoder::setPacketQueue(PacketQueue* q) { pktQ_ = q; }
+void VideoDecoder::setFrameQueue(FrameQueue<VideoFrame>* fq) { frameQ_ = fq; }
+void VideoDecoder::setCommandQueue(CommandQueue* q) { cmdQ_ = q; }
+void VideoDecoder::setEventQueue(EventQueue* q) { eventQ_ = q; }
 
-    if (ret == AVERROR(EAGAIN))
-        return DecodeResult::TryAgain;
-    if (ret < 0)
-        return DecodeResult::CodecError;
+void VideoDecoder::start()
+{
+    if (running_.exchange(true)) return;
+    thread_ = std::thread(&VideoDecoder::run, this);
+}
+
+void VideoDecoder::stop()
+{
+    if (!running_.exchange(false)) return;
+
+    if (thread_.joinable())
+        thread_.join();
+}
+
+void VideoDecoder::handleCommand(const Command& cmd)
+{
+    std::visit([&](auto&& c){
+        using T = std::decay_t<decltype(c)>;
+
+        if constexpr (std::is_same_v<T, CmdFlush>) {
+            SPDLOG_DEBUG("VideoDecoder flush serial={}", c.serial);
+            reset();
+            curSerial_ = c.serial;
+        }
+        else if constexpr (std::is_same_v<T, CmdStop>) {
+            running_ = false;
+        }
+
+    }, cmd);
+}
+
+DecodeResult VideoDecoder::send(const PacketData& pkt)
+{
+    int ret = (!pkt.pkt || !pkt.pkt->data)
+    ? avcodec_send_packet(codecCtx_, nullptr)
+    : avcodec_send_packet(codecCtx_, pkt.pkt.get());
+
+    if (ret == AVERROR(EAGAIN)) return DecodeResult::TryAgain;
+    if (ret < 0) return DecodeResult::CodecError;
     return DecodeResult::Ok;
 }
 
-DecodeResult VideoDecoder::receive(VideoFrame &out)
+DecodeResult VideoDecoder::receive(VideoFrame& out)
 {
-    int ret = avcodec_receive_frame(codecCtx, frame);
+    int ret = avcodec_receive_frame(codecCtx_, frame_);
+
     if (ret == AVERROR(EAGAIN))
         return DecodeResult::TryAgain;
     if (ret == AVERROR_EOF)
@@ -99,49 +108,98 @@ DecodeResult VideoDecoder::receive(VideoFrame &out)
     if (ret < 0)
         return DecodeResult::CodecError;
 
-    // 1️ 创建 NV12 输出 frame
-    AVFrame* dst = av_frame_alloc();
-    if (!dst)
-        return DecodeResult::FatalError;
+    out.frame = AVFrameHolder(frame_);
+    out.width = frame_->width;
+    out.height = frame_->height;
+    out.format = (AVPixelFormat)frame_->format;
 
-    dst->format = AV_PIX_FMT_NV12;
-    dst->width  = width;
-    dst->height = height;
+    if (frame_->best_effort_timestamp != AV_NOPTS_VALUE)
+        out.pts = frame_->best_effort_timestamp * av_q2d(timeBase_);
+    else
+        out.pts = 0;
 
-    if (av_frame_get_buffer(dst, 32) < 0)
-    {
-        av_frame_free(&dst);
-        return DecodeResult::FatalError;
+    av_frame_unref(frame_);
+    return DecodeResult::FrameReady;
+}
+
+void VideoDecoder::reset()
+{
+    if (codecCtx_)
+        avcodec_flush_buffers(codecCtx_);
+}
+void VideoDecoder::run()
+{
+    SPDLOG_INFO("VideoDecoder thread start");
+    while (running_) {
+
+        // 处理命令
+        while (cmdQ_) {
+            auto cmd = cmdQ_->try_pop();
+            if (!cmd) break;
+            handleCommand(*cmd);
+        }
+
+        // 取 packet
+        PacketData pkt;
+        auto status = pktQ_->get(pkt, true);
+
+        if (status == GetStatus::Closed) {
+            send(PacketData{}); // flush
+
+            while (running_) {
+                VideoFrame f;
+                auto ret = receive(f);
+                if (ret == DecodeResult::FrameReady) {
+                    f.serial = curSerial_;
+                    if (!frameQ_->push(std::move(f)))
+                        break;
+                } else if (ret == DecodeResult::Drained) {
+                    break;
+                } else if (ret == DecodeResult::TryAgain) {
+                    continue;
+                } else {
+                    break;
+                }
+            }
+
+            frameQ_->close();
+            break;
+        }
+
+        if (status != GetStatus::Ok)
+            continue;
+
+        curSerial_ = pkt.serial;
+
+        auto sret = send(pkt);
+        if (sret == DecodeResult::FatalError)
+            break;
+
+        // 尽量吐帧
+        while (running_) {
+            VideoFrame f;
+            auto ret = receive(f);
+
+            if (ret == DecodeResult::FrameReady) {
+                if (pkt.serial != pktQ_->serial())
+                    continue;
+                f.serial = pkt.serial;
+                if (!frameQ_->push(std::move(f)))
+                    break;
+                continue;
+            }
+
+            if (ret == DecodeResult::TryAgain)
+                break;
+
+            if (ret == DecodeResult::Drained)
+                break;
+
+            if (ret == DecodeResult::FatalError)
+                break;
+        }
     }
 
-    // 2️ sws 直接写入 dst 的 buffer
-    sws_scale(
-        swsCtx,
-        frame->data,
-        frame->linesize,
-        0,
-        height,
-        dst->data,
-        dst->linesize
-        );
-
-    // 3️ 复制时间戳
-    dst->pts = frame->pts;
-    dst->best_effort_timestamp = frame->best_effort_timestamp;
-
-    // 4️ 输出
-    out.width  = width;
-    out.height = height;
-    out.format = AV_PIX_FMT_NV12;
-
-    if (frame->best_effort_timestamp != AV_NOPTS_VALUE)
-        out.pts = frame->best_effort_timestamp * av_q2d(timeBase_);
-    else
-        out.pts = 0.0;
-
-    out.frame.reset(dst);
-
-    av_frame_unref(frame);
-
-    return DecodeResult::FrameReady;
+    frameQ_->close();
+    SPDLOG_INFO("VideoDecoder thread exit");
 }

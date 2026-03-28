@@ -1,54 +1,56 @@
-#ifndef DEMUXER_H
-#define DEMUXER_H
+#pragma once
 
 #include "packetqueue.h"
+#include "ThreadSafeQueue.h"
+#include "Command.h"
+#include "Event.h"
+
+#include <thread>
+#include <atomic>
 #include <string>
+
 extern "C" {
-#include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <libavutil/frame.h>
-#include <libavutil/imgutils.h>
 }
 
 class Demuxer {
 public:
-    Demuxer() = default;
+    using CommandQueue = SPSCQueue<Command>;
+    using EventQueue   = MPSCQueue<Event>;
+
+    Demuxer();
     ~Demuxer();
 
-    bool open(std::string_view u);
+    bool open(std::string_view url);
     void close();
 
-    void start();                //
-    bool seek(double seconds);   //
-
-    void run();
+    void start();     // 启动线程
+    void stop();      // 停止线程
 
     void setPktQueue(PacketQueue* vq, PacketQueue* aq);
+    void setCommandQueue(CommandQueue* q);
+    void setEventQueue(EventQueue* q);
 
-
-    const AVStream* videoStream() const;
-    const AVStream* audioStream() const;
-
-    inline int getVideoStreamIndex() const { return m_videoStreamIndex; };
-    inline int getAudioStreamIndex() const { return m_audioStreamIndex; };
+    auto audioStream() const { return 1; }
+    auto videoStream() const { return 1; }
 
 private:
-    // 读一个 packet（EOF 返回 false）
+    void run();                    // 线程主循环
+    void handleCommand(const Command& cmd);
+
     bool readFrame(PacketData& out);
-    bool readVideoFrame(PacketData& out);
-
 
 private:
-    std::string m_url;
-    AVFormatContext* m_fmtCtx = nullptr;
-    AVPacket* m_pkt = nullptr;
+    std::string url_;
+    AVFormatContext* fmt_ = nullptr;
+    AVPacket* pkt_ = nullptr;
 
-    PacketQueue* m_videoPktQueue;
-    PacketQueue* m_audioPktQueue;
+    PacketQueue* videoQ_ = nullptr;
+    PacketQueue* audioQ_ = nullptr;
 
-    int m_videoStreamIndex = -1;
-    int m_audioStreamIndex = -1;
+    CommandQueue* cmdQ_ = nullptr;
+    EventQueue* eventQ_ = nullptr;
+
+    std::thread thread_;
+    std::atomic<bool> running_{false};
 };
-
-#endif // DEMUXER_H

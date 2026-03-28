@@ -1,57 +1,74 @@
-#ifndef VIDEODECODER_H
-#define VIDEODECODER_H
+#pragma once
 
-#include <atomic>
+#include "packetqueue.h"
+#include "FrameQueue.h"
+#include "ThreadSafeQueue.h"
+#include "Command.h"
+#include "Event.h"
+
 extern "C" {
 #include <libavcodec/avcodec.h>
 #include <libavformat/avformat.h>
-#include <libswscale/swscale.h>
-#include <libavutil/frame.h>
-#include <libavutil/imgutils.h>
 }
-#include "packetqueue.h"
-#include "framequeue.h"
+
+#include <thread>
+#include <atomic>
+
 
 enum class DecodeResult {
-    Ok,            // send 成功（packet accepted）
-    TryAgain,      // EAGAIN
-    FrameReady,    // receive 成功输出一帧
-    Drained,       // receive 返回 EOF
-    Closed,
+    FrameReady,
+    FatalError,
+    TryAgain,
+    Drained,
     CodecError,
-    FatalError
+    Ok,
 };
+
+struct VideoFrame;
 
 class VideoDecoder {
 public:
-    VideoDecoder() = default;
+    using CommandQueue = SPSCQueue<Command>;
+    using EventQueue   = MPSCQueue<Event>;
+
+    VideoDecoder();
     ~VideoDecoder();
 
     bool open(const AVStream* stream);
     void close();
 
-    DecodeResult send(const PacketData& pkt);
-    DecodeResult receive(VideoFrame& out);
+    void start();
+    void stop();
 
-    AVRational timeBase() const { return timeBase_; }
-    int streamIndex() const { return streamIndex_; }
-
-    // double getPtsSec() const;
+    void setPacketQueue(PacketQueue* q);
+    void setFrameQueue(FrameQueue<VideoFrame>* fq);
+    void setCommandQueue(CommandQueue* q);
+    void setEventQueue(EventQueue* q);
 
 private:
-    AVCodecContext* codecCtx = nullptr;
-    AVFrame* frame = nullptr;
-    SwsContext* swsCtx = nullptr;
+    void run();
+    void handleCommand(const Command& cmd);
 
-    int width = 0;
-    int height = 0;
-    AVPixelFormat srcPixFmt = AV_PIX_FMT_NONE;
+    DecodeResult send(const PacketData& pkt);
+    DecodeResult receive(VideoFrame& frame);
+
+    void reset();
+
+private:
+    AVCodecContext* codecCtx_ = nullptr;
+    AVFrame* frame_ = nullptr;
 
     AVRational timeBase_{};
     int streamIndex_ = -1;
 
-    std::atomic<bool> closed_{false};
+    PacketQueue* pktQ_ = nullptr;
+    FrameQueue<VideoFrame>* frameQ_ = nullptr;
+
+    CommandQueue* cmdQ_ = nullptr;
+    EventQueue* eventQ_ = nullptr;
+
+    std::thread thread_;
+    std::atomic<bool> running_{false};
+
+    int curSerial_ = -1;
 };
-
-
-#endif // VIDEODECODER_H

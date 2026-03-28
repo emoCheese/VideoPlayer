@@ -38,6 +38,7 @@ VideoPlayer::VideoPlayer(const std::string &u)
         videoRenderCmdQueue_
     );
     SPDLOG_DEBUG("VideoPlayer constructed with state machine");
+
 }
 
 VideoPlayer::~VideoPlayer()
@@ -56,6 +57,11 @@ void VideoPlayer::start()
         SPDLOG_ERROR("demux open failed");
         throw std::runtime_error("demux open failed");
     }
+    demux_.setPktQueue(&videoPktQueue_, &audioPktQueue_);
+    demux_.setCommandQueue(&demuxCmdQueue_);
+    demux_.setEventQueue(&eventQueue_);
+
+
     audioOutput_.open();
     if (!audioDec_.open(demux_.audioStream(),
                         audioOutput_.sampleRate(),
@@ -63,21 +69,28 @@ void VideoPlayer::start()
         SPDLOG_ERROR("audio decoder open failed");
         throw std::runtime_error("audio decoder open failed");
     }
+
+
     if (!videoDec_.open(demux_.videoStream())) {
         SPDLOG_ERROR("video decoder open failed");
         throw std::runtime_error("video decoder open failed");
     }
+    videoDec_.setPacketQueue(&videoPktQueue_);
+    videoDec_.setFrameQueue(&videoFrameQueue_);
+    videoDec_.setCommandQueue(&videoDecCmdQueue_);
+    videoDec_.setEventQueue(&eventQueue_);
+    videoDec_.start();
 
     // 启动状态机线程（必须在其他线程之前启动）
     stateMachine_->start();
 
-    // 启动音频输出（内部有独立线程）
-    audioOutput_.start();
+    demux_.start();   // 🔥替代 demuxThread
 
-    // 启动数据流线程
-    demuxThread_ = std::thread(&VideoPlayer::demuxLoop, this);
     audioThread_ = std::thread(&VideoPlayer::audioDecodeLoop, this);
     videoThread_ = std::thread(&VideoPlayer::videoDecodeLoop, this);
+
+    // 启动音频输出（内部有独立线程）
+    audioOutput_.start();
 
     // 上报 DemuxerReady 事件
     reportEvent(DemuxerReady{});
@@ -107,12 +120,9 @@ void VideoPlayer::stop()
     videoRenderCmdQueue_.close();
 
     // 等待线程退出
-    if (demuxThread_.joinable())
-        demuxThread_.join();
-    if (videoThread_.joinable())
-        videoThread_.join();
-    if (audioThread_.joinable())
-        audioThread_.join();
+    demux_.stop();   // 🔥关键
+    videoDec_.stop();
+    audioDec_.stop();
 
     // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
     audioOutput_.stop();
@@ -177,39 +187,6 @@ void VideoPlayer::flushPackage() {
 }
 
 // ---------- 命令处理 ----------
-
-void VideoPlayer::handleDemuxCommand(const Command& cmd) {
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, CmdStart>) {
-            // Demux 开始读取（serial 已在 start 中增加）
-            SPDLOG_DEBUG("Demux received CmdStart");
-        }
-        else if constexpr (std::is_same_v<T, CmdPause>) {
-            // Demux 暂停（暂不实现，因为 demux 线程可以继续读，但 packet 队列会满）
-            SPDLOG_DEBUG("Demux received CmdPause");
-        }
-        else if constexpr (std::is_same_v<T, CmdSeek>) {
-            const CmdSeek& cs = std::get<CmdSeek>(cmd);
-            SPDLOG_INFO("Demux seek to {} sec, serial {}", cs.seconds, cs.serial);
-            // 执行 seek 操作
-            demux_.seek(cs.seconds);
-            // 更新 packet queue serial
-            videoPktQueue_.start(); // 内部会增加 serial
-            audioPktQueue_.start();
-            // 上报事件（可选）
-            reportEvent(DecoderDrained{cs.serial});
-        }
-        else if constexpr (std::is_same_v<T, CmdFlush>) {
-            const CmdFlush& cf = std::get<CmdFlush>(cmd);
-            SPDLOG_DEBUG("Demux flush with serial {}", cf.serial);
-            // 刷新 packet 队列（已在 seek 中处理）
-        }
-        else {
-            SPDLOG_TRACE("Demux ignoring command: {}", commandName(cmd));
-        }
-    }, cmd);
-}
 
 void VideoPlayer::handleAudioDecCommand(const Command& cmd) {
     // 类似 handleDemuxCommand，处理音频解码器相关命令
@@ -277,79 +254,6 @@ void VideoPlayer::reportEvent(Event&& e) {
 }
 
 // ---------- 线程循环（待改造，目前仅保留原有逻辑） ----------
-
-void VideoPlayer::demuxLoop() {
-    DemuxState state = DemuxState::Init;
-    while (!abort_) {
-        // 1. 处理命令（优先级高）
-        while (auto cmd = demuxCmdQueue_.try_pop()) {
-            handleDemuxCommand(*cmd);
-        }
-
-        // 2. 处理数据（可阻塞）
-        switch (state) {
-        case DemuxState::Init: {
-            demux_.start();         // serial++
-            videoPktQueue_.start(); // serial++
-            audioPktQueue_.start();
-            state = DemuxState::Reading;
-            break;
-        }
-        case DemuxState::Reading: {
-            PacketData data;
-            bool ok = demux_.readFrame(data);
-            if (!ok) {
-                // EOF：进入 draining
-                state = DemuxState::Draining;
-                reportEvent(DemuxerEOF{});
-                break;
-            }
-            if (!data.pkt) {
-                // 非视频包（或被丢弃）
-                break;
-            }
-            PutStatus res;
-            if (data.streamIndex == demux_.getAudioStreamIndex()) {
-                data.serial = audioPktQueue_.serial();
-                res = audioPktQueue_.put(std::move(data), true);
-            } else if (data.streamIndex == demux_.getVideoStreamIndex()) {
-                data.serial = videoPktQueue_.serial();
-                res = videoPktQueue_.put(std::move(data), true);
-            }
-            if (res == PutStatus::Closed) {
-                state = DemuxState::Ended;
-                SPDLOG_DEBUG("Packet Queue Closed, DemuxState::Ended");
-            }
-            break;
-        }
-        case DemuxState::Draining: {
-            flushPackage();
-            state = DemuxState::Ended;
-            SPDLOG_INFO("Video/Audio Flush");
-            break;
-        }
-        case DemuxState::Seeking: {
-            // 预留：seek 时用
-            break;
-        }
-        case DemuxState::Ended: {
-            videoPktQueue_.close();
-            audioPktQueue_.close();
-            return;
-        }
-        case DemuxState::Error: {
-            videoPktQueue_.close();
-            audioPktQueue_.close();
-            return;
-        }
-        }
-
-        // 3. 上报事件（如有需要）
-        // 已在代码中上报
-    }
-    videoPktQueue_.close();
-    audioPktQueue_.close();
-}
 
 void VideoPlayer::audioDecodeLoop()
 {

@@ -1,146 +1,134 @@
 #include "demuxer.h"
+#include <spdlog/spdlog.h>
 
+Demuxer::Demuxer() {}
 
-Demuxer::~Demuxer()
-{
+Demuxer::~Demuxer() {
+    stop();
     close();
 }
 
-bool Demuxer::open(std::string_view u)
-{
-    m_url = u;
-    close();
-    m_fmtCtx = avformat_alloc_context();
+bool Demuxer::open(std::string_view url) {
+    url_ = url;
 
-    // 1. 打开文件
-    if (avformat_open_input(&m_fmtCtx, m_url.c_str(), nullptr, nullptr) < 0)
+    if (avformat_open_input(&fmt_, url_.c_str(), nullptr, nullptr) < 0)
         return false;
 
-    // 2. 获取流信息
-    if (avformat_find_stream_info(m_fmtCtx, nullptr) < 0)
+    if (avformat_find_stream_info(fmt_, nullptr) < 0)
         return false;
 
-    // 3. 查找视频流
-    m_videoStreamIndex = -1;
-    for(unsigned i = 0; i < m_fmtCtx->nb_streams; ++i) {
-        auto type = m_fmtCtx->streams[i]->codecpar->codec_type;
-        switch (type) {
-        case AVMEDIA_TYPE_VIDEO:
-            if (m_videoStreamIndex < 0) {
-                m_videoStreamIndex = i;
-            }
-            break;
-        case AVMEDIA_TYPE_AUDIO:
-            if (m_audioStreamIndex < 0) {
-                m_audioStreamIndex = i;
-            }
-            break;
-        case AVMEDIA_TYPE_SUBTITLE:
+    pkt_ = av_packet_alloc();
+    return pkt_ != nullptr;
+}
 
-            break;
-        case AVMEDIA_TYPE_UNKNOWN:
-            break;
-        case AVMEDIA_TYPE_DATA:
-        case AVMEDIA_TYPE_ATTACHMENT:
-        case AVMEDIA_TYPE_NB:
-            break;
+void Demuxer::close() {
+    if (pkt_) {
+        av_packet_free(&pkt_);
+        pkt_ = nullptr;
+    }
+    if (fmt_) {
+        avformat_close_input(&fmt_);
+        fmt_ = nullptr;
+    }
+}
+
+void Demuxer::setPktQueue(PacketQueue* vq, PacketQueue* aq) {
+    videoQ_ = vq;
+    audioQ_ = aq;
+}
+
+void Demuxer::setCommandQueue(CommandQueue* q) {
+    cmdQ_ = q;
+}
+
+void Demuxer::setEventQueue(EventQueue* q) {
+    eventQ_ = q;
+}
+
+void Demuxer::start() {
+    if (running_.exchange(true)) return;
+    thread_ = std::thread(&Demuxer::run, this);
+}
+
+void Demuxer::stop() {
+    if (!running_.exchange(false)) return;
+
+    if (thread_.joinable())
+        thread_.join();
+}
+
+void Demuxer::handleCommand(const Command& cmd) {
+    std::visit([&](auto&& c) {
+        using T = std::decay_t<decltype(c)>;
+
+        if constexpr (std::is_same_v<T, CmdSeek>) {
+            int64_t ts = static_cast<int64_t>(c.seconds * AV_TIME_BASE);
+            av_seek_frame(fmt_, -1, ts, AVSEEK_FLAG_BACKWARD);
+
+            videoQ_->start(); // serial++
+            audioQ_->start();
+
+            if (eventQ_)
+                eventQ_->push(DecoderDrained{c.serial});
         }
-    }
 
-    m_pkt = av_packet_alloc();
-    if (!m_pkt) return false;
-    m_pkt->data = nullptr;
-    m_pkt->size = 0;
-    return true;
+        else if constexpr (std::is_same_v<T, CmdStop>) {
+            running_ = false;
+        }
+
+    }, cmd);
 }
 
-void Demuxer::close()
-{
-    if (m_pkt) {
-        av_packet_free(&m_pkt);
-        m_pkt = nullptr;
-    }
-    if (m_fmtCtx) {
-        avformat_close_input(&m_fmtCtx);
-        m_fmtCtx = nullptr;
-    }
-}
-
-void Demuxer::start()
-{
-    if (m_pkt)
-        av_packet_unref(m_pkt);
-}
-
-bool Demuxer::seek(double seconds)
-{
-    if (!m_fmtCtx) return false;
-    int64_t timestamp = static_cast<int64_t>(seconds * AV_TIME_BASE);
-    int ret = av_seek_frame(m_fmtCtx, -1, timestamp, AVSEEK_FLAG_BACKWARD);
-    if (ret < 0) {
-        // 尝试向前seek
-        ret = av_seek_frame(m_fmtCtx, -1, timestamp, AVSEEK_FLAG_ANY);
-        if (ret < 0) return false;
-    }
-    // 清除当前包，避免旧数据干扰
-    if (m_pkt) av_packet_unref(m_pkt);
-    return true;
-}
-
-void Demuxer::run()
-{
-
-}
-
-void Demuxer::setPktQueue(PacketQueue *vq, PacketQueue *aq)
-{
-    m_videoPktQueue = vq;
-    m_audioPktQueue = aq;
-}
-
-bool Demuxer::readFrame(PacketData &out)
-{
-    int ret = av_read_frame(m_fmtCtx, m_pkt);
-    if (ret < 0) {
-        out.pkt = nullptr;
-        out.isFlush = false;
-        return false;
-    }
+bool Demuxer::readFrame(PacketData& out) {
+    int ret = av_read_frame(fmt_, pkt_);
+    if (ret < 0) return false;
 
     PacketPtr p = make_packet();
-    av_packet_move_ref(p.get(), m_pkt); // 这里做 move 操作后 m_pkt 失效
+    av_packet_move_ref(p.get(), pkt_);
+
     out.pkt = std::move(p);
+    out.streamIndex = out.pkt->stream_index;
     out.isFlush = false;
-    out.streamIndex = out.pkt->stream_index;  // 区分音频/视频包
 
-
-    av_packet_unref(m_pkt);
+    av_packet_unref(pkt_);
     return true;
 }
 
-bool Demuxer::readVideoFrame(PacketData &out)
-{
-    while (true) {
-        int ret = av_read_frame(m_fmtCtx, m_pkt);
-        if (ret < 0) {
-            out.pkt = nullptr;
-            out.isFlush = false;
-            return false;
+void Demuxer::run() {
+    SPDLOG_INFO("Demux thread start");
+
+    while (running_) {
+
+        // 1️⃣ 先处理命令（关键）
+        while (cmdQ_) {
+            auto cmd = cmdQ_->try_pop();
+            if (!cmd) break;
+            handleCommand(*cmd);
         }
-        if (m_pkt->stream_index == m_videoStreamIndex) // 只接受视频包
-        {
-            PacketPtr p = make_packet();
-            av_packet_move_ref(p.get(), m_pkt);
-            out.pkt = std::move(p);
-            out.isFlush = false;
-            out.streamIndex = out.pkt->stream_index;
-            av_packet_unref(m_pkt);
-            return true;
+
+        // 2️⃣ 读数据
+        PacketData data;
+        if (!readFrame(data)) {
+            if (eventQ_)
+                eventQ_->push(DemuxerEOF{});
+            break;
         }
-        av_packet_unref(m_pkt); // 丢弃非视频包
+
+        if (!data.pkt) continue;
+
+        // 3️⃣ 分发
+        if (videoQ_ && data.streamIndex == videoQ_->serial()) {
+            data.serial = videoQ_->serial();
+            videoQ_->put(std::move(data), true);
+        } else if (audioQ_) {
+            data.serial = audioQ_->serial();
+            audioQ_->put(std::move(data), true);
+        }
     }
+
+    // 收尾
+    if (videoQ_) videoQ_->close();
+    if (audioQ_) audioQ_->close();
+
+    SPDLOG_INFO("Demux thread exit");
 }
-
-const AVStream *Demuxer::videoStream() const { return m_fmtCtx ? m_fmtCtx->streams[m_videoStreamIndex] : nullptr; }
-
-const AVStream *Demuxer::audioStream() const { return m_fmtCtx ? m_fmtCtx->streams[m_audioStreamIndex] : nullptr; }
