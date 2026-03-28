@@ -98,7 +98,6 @@ private:
     // 状态机（新增）
     std::unique_ptr<StateMachine> stateMachine_;
 
-
     std::atomic<bool> abort_{false};
 };
 

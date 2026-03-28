@@ -85,8 +85,8 @@ private:
     void dispatchToDemux(const Command& cmd);
     void dispatchToAudioDec(const Command& cmd);
     void dispatchToVideoDec(const Command& cmd);
-    void dispatchToAudioRender(const Command& cmd);
-    void dispatchToVideoRender(const Command& cmd);
+    // void dispatchToAudioRender(const Command& cmd);
+    // void dispatchToVideoRender(const Command& cmd);
     
     // 序列号生成（用于 seek）
     int generateSerial();
@@ -96,8 +96,8 @@ private:
     CommandQueue& demuxCmdQ_;
     CommandQueue& audioDecCmdQ_;
     CommandQueue& videoDecCmdQ_;
-    CommandQueue& audioRenderCmdQ_;
-    CommandQueue& videoRenderCmdQ_;
+    // CommandQueue& audioRenderCmdQ_;
+    // CommandQueue& videoRenderCmdQ_;
     
     mutable std::mutex stateMutex_;
     State state_;                     // 当前状态，受 mutex 保护

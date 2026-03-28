@@ -106,10 +106,12 @@ void VideoPlayer::stop()
     if (!abort_.compare_exchange_strong(expected, true)) {
         return;
     }
+    play();
 
     // 首先停止状态机（它会下发停止命令）
     stateMachine_->stop();
     // 等待线程退出
+
     demux_.stop();   // 🔥关键
     videoDec_.stop();
     audioDec_.stop();
@@ -126,7 +128,6 @@ void VideoPlayer::stop()
     audioRenderCmdQueue_.close();
     videoRenderCmdQueue_.close();
 
-
     // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
     audioOutput_.stop();
     masterClock_.stop();
@@ -140,12 +141,16 @@ void VideoPlayer::stop()
 void VideoPlayer::pause()
 {
     // 改为推送事件，由状态机决策
-    reportEvent(PauseRequest{});
+    // reportEvent(PauseRequest{});
+    audioOutput_.audioPause(true);
+    masterClock_.pause(true);
 }
 
 void VideoPlayer::play()
 {
-    reportEvent(PlayRequest{});
+    // reportEvent(PlayRequest{});
+    audioOutput_.audioPause(false);
+    masterClock_.pause(false);
 }
 
 void VideoPlayer::seek(double seconds)

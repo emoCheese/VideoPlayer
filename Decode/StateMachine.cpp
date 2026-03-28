@@ -11,8 +11,8 @@ StateMachine::StateMachine(EventQueue& eventQ,
     , demuxCmdQ_(demuxCmdQ)
     , audioDecCmdQ_(audioDecCmdQ)
     , videoDecCmdQ_(videoDecCmdQ)
-    , audioRenderCmdQ_(audioRenderCmdQ)
-    , videoRenderCmdQ_(videoRenderCmdQ)
+    // , audioRenderCmdQ_(audioRenderCmdQ)
+    // , videoRenderCmdQ_(videoRenderCmdQ)
     , state_(Idle{})
 {
     SPDLOG_DEBUG("StateMachine constructed");
@@ -103,6 +103,10 @@ State StateMachine::handle(const Idle& s, const Event& e) {
         else if constexpr (std::is_same_v<T, QuitRequest>) {
             SPDLOG_INFO("Quit requested, staying idle");
             return Idle{};
+        }
+        else if constexpr (std::is_same_v<T, DemuxerReady>) {
+            SPDLOG_INFO("DemuxerReady, Idle -> Playing");
+            return Playing{};
         }
         else {
             SPDLOG_TRACE("Idle ignoring event: {}", eventName(e));
@@ -284,6 +288,24 @@ State StateMachine::handle(const Error& s, const Event& e) {
 
 void StateMachine::dispatch(const Command& cmd) {
     // 默认广播到所有模块（实际可根据命令类型筛选）
+    std::visit([&](auto&& c) {
+        using T = std::decay_t<decltype(c)>;
+        if constexpr (std::is_same_v<T, CmdPause>) {
+            // dispatchToAudioRender(cmd);
+            // dispatchToVideoRender(cmd);
+        }
+        else if constexpr (std::is_same_v<T, CmdResume>) {
+            // dispatchToAudioRender(cmd);
+            // dispatchToVideoRender(cmd);
+        }
+        else if constexpr (std::is_same_v<T, CmdSeek>) {
+            dispatchToDemux(cmd);
+            dispatchToAudioDec(cmd);
+            dispatchToVideoDec(cmd);
+            // dispatchToAudioRender(cmd);
+        }
+    }, cmd);
+
     dispatchToDemux(cmd);
     dispatchToAudioDec(cmd);
     dispatchToVideoDec(cmd);
@@ -309,17 +331,17 @@ void StateMachine::dispatchToVideoDec(const Command& cmd) {
     }
 }
 
-void StateMachine::dispatchToAudioRender(const Command& cmd) {
-    if (!audioRenderCmdQ_.try_push(Command{cmd})) {
-        SPDLOG_WARN("AudioRender command queue full, dropping command: {}", commandName(cmd));
-    }
-}
+// void StateMachine::dispatchToAudioRender(const Command& cmd) {
+//     if (!audioRenderCmdQ_.try_push(Command{cmd})) {
+//         SPDLOG_WARN("AudioRender command queue full, dropping command: {}", commandName(cmd));
+//     }
+// }
 
-void StateMachine::dispatchToVideoRender(const Command& cmd) {
-    if (!videoRenderCmdQ_.try_push(Command{cmd})) {
-        SPDLOG_WARN("VideoRender command queue full, dropping command: {}", commandName(cmd));
-    }
-}
+// void StateMachine::dispatchToVideoRender(const Command& cmd) {
+//     if (!videoRenderCmdQ_.try_push(Command{cmd})) {
+//         SPDLOG_WARN("VideoRender command queue full, dropping command: {}", commandName(cmd));
+//     }
+// }
 
 int StateMachine::generateSerial() {
     return ++serial_;
