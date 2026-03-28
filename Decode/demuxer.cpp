@@ -87,6 +87,17 @@ bool Demuxer::seek(double seconds)
     return true;
 }
 
+void Demuxer::run()
+{
+
+}
+
+void Demuxer::setPktQueue(PacketQueue *vq, PacketQueue *aq)
+{
+    m_videoPktQueue = vq;
+    m_audioPktQueue = aq;
+}
+
 bool Demuxer::readFrame(PacketData &out)
 {
     int ret = av_read_frame(m_fmtCtx, m_pkt);

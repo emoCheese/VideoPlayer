@@ -35,6 +35,7 @@ qt_add_executable(QFFPlayer
     Decode/framequeue.h Decode/framequeue.cpp
     Decode/demuxer.h Decode/demuxer.cpp
     Decode/videodecoder.h Decode/videodecoder.cpp
+    Decode/StateMachine.h Decode/StateMachine.cpp
 
 
     VideoWidget/videowidget.h VideoWidget/videowidget.cpp
