@@ -74,8 +74,17 @@ void Demuxer::start()
 
 bool Demuxer::seek(double seconds)
 {
-    // to do
-    return false;
+    if (!m_fmtCtx) return false;
+    int64_t timestamp = static_cast<int64_t>(seconds * AV_TIME_BASE);
+    int ret = av_seek_frame(m_fmtCtx, -1, timestamp, AVSEEK_FLAG_BACKWARD);
+    if (ret < 0) {
+        // 尝试向前seek
+        ret = av_seek_frame(m_fmtCtx, -1, timestamp, AVSEEK_FLAG_ANY);
+        if (ret < 0) return false;
+    }
+    // 清除当前包，避免旧数据干扰
+    if (m_pkt) av_packet_unref(m_pkt);
+    return true;
 }
 
 bool Demuxer::readFrame(PacketData &out)

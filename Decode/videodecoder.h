@@ -47,8 +47,6 @@ private:
     int height = 0;
     AVPixelFormat srcPixFmt = AV_PIX_FMT_NONE;
 
-    uint8_t* nv12Buffer = nullptr;
-
     AVRational timeBase_{};
     int streamIndex_ = -1;
 

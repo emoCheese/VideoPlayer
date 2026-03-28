@@ -29,7 +29,7 @@ qt_add_executable(QFFPlayer
     mainwindow.h
     mainwindow.ui
 
-    Decode/ffmpeg.h Decode/ffmpeg.cpp
+    # Decode/ffmpeg.h Decode/ffmpeg.cpp
     Decode/packetqueue.h Decode/packetqueue.cpp
     Decode/videoplayer.h Decode/videoplayer.cpp
     Decode/framequeue.h Decode/framequeue.cpp

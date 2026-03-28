@@ -225,7 +225,29 @@ void VideoPlayer::audioDecodeLoop()
         GetStatus status = audioPktQueue_.get(data, true);
         if (status == GetStatus::Closed) {
             audioDec_.send(PacketData{}); // flush decoder
-            continue;
+            // 排空解码器
+            while (!abort_) {
+                AudioBlock block;
+                DecodeResult ret = audioDec_.receive(block);
+                if (ret == DecodeResult::FrameReady) {
+                    block.serial = audioPktQueue_.serial(); // 使用当前serial
+                    if (!audioFifo_.push(std::move(block)))
+                        break;
+                    continue;
+                } else if (ret == DecodeResult::Drained) {
+                    break; // 排空完成
+                } else if (ret == DecodeResult::TryAgain) {
+                    // 解码器尚未有输出，继续等待
+                    continue;
+                } else {
+                    // FatalError 等错误情况
+                    audioFifo_.close();
+                    return;
+                }
+            }
+            // 排空完成后退出线程
+            audioFifo_.close();
+            return;
         }
         if (status != GetStatus::Ok)
             continue;
@@ -266,6 +288,32 @@ void VideoPlayer::videoDecodeLoop()
         GetStatus status = videoPktQueue_.get(pkt, true);
         if (status == GetStatus::Closed) {
             videoDec_.send(PacketData{}); // flush
+            // 排空解码器
+            while (!abort_) {
+                VideoFrame frame;
+                DecodeResult ret = videoDec_.receive(frame);
+                if (ret == DecodeResult::FrameReady) {
+                    frame.serial = cur_serial;
+                    if (!videoFrameQueue_.push(std::move(frame))) {
+                        videoFrameQueue_.close();
+                        return;
+                    }
+                    continue;
+                } else if (ret == DecodeResult::Drained) {
+                    break; // 排空完成
+                } else if (ret == DecodeResult::TryAgain) {
+                    // 解码器尚未有输出，继续等待
+                    // 避免忙等待，可以短暂休眠，但简单起见继续循环
+                    continue;
+                } else {
+                    // Closed, FatalError, CodecError 等错误情况
+                    videoFrameQueue_.close();
+                    return;
+                }
+            }
+            // 排空完成后退出线程
+            videoFrameQueue_.close();
+            return;
         }
         else if (status == GetStatus::Ok) {
             cur_serial = pkt.serial;

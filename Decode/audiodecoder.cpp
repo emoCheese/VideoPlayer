@@ -56,12 +56,10 @@ bool AudioDecoder::open(const AVStream* stream, int deviceSampleRate, int device
     int             srcRate   = codecCtx_->sample_rate;
     AVSampleFormat  srcFmt    = codecCtx_->sample_fmt;
 
-    dstSampleRate_ = deviceSampleRate;
-
     // -------- 目标参数--------
     dstSampleRate_ = deviceSampleRate;          // 目标采样率
     dstSampleFmt_  = AV_SAMPLE_FMT_FLT;         // 目标格式 标准 PCM（float32 interleaved）
-    dstSampleRate_ = deviceSampleRate;          // 目标声道数
+    dstChannels_   = deviceChannels;            // 目标声道数
 
     // -------- 初始化 swr --------
 #if FFMPEG_NEW_CHANNEL_LAYOUT

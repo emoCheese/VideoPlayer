@@ -49,12 +49,6 @@ bool VideoDecoder::open(const AVStream* stream)
     if (!swsCtx)
         return false;
 
-    nv12Buffer = static_cast<uint8_t*>(
-        av_malloc(width * height * 3 / 2)
-        );
-    if (!nv12Buffer)
-        return false;
-
     return true;
 }
 
@@ -72,10 +66,6 @@ void VideoDecoder::close()
     if (swsCtx) {
         sws_freeContext(swsCtx);
         swsCtx = nullptr;
-    }
-    if (nv12Buffer) {
-        av_free(nv12Buffer);
-        nv12Buffer = nullptr;
     }
 }
 

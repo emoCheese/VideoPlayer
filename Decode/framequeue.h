@@ -130,12 +130,13 @@ public:
     void flush()
     {
         std::lock_guard<std::mutex> lock(mtx_);
-        rindex_ = 0;
-        windex_ = 0;
-        size_   = 0;
+        // 清空有效元素
         for (size_t i = 0; i < size_; ++i) {
             queue_[(rindex_ + i) % capacity_] = T{};
         }
+        rindex_ = 0;
+        windex_ = 0;
+        size_   = 0;
         SPDLOG_DEBUG("FrameQueue flushed");
 
         // 唤醒所有等待线程
