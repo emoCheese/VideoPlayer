@@ -72,7 +72,7 @@ IClockSource* MasterClock::getMasterClock() const
 }
 
 
-#if 1
+#if 0
 void MasterClock::loop()
 {
     const double max_frame_duration = 0.5;
@@ -198,7 +198,7 @@ void MasterClock::loop()
             queue_.size());
     }
 }
-#elif
+#else
 // 通用 loop
 void MasterClock::loop()
 {
