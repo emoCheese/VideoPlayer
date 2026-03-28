@@ -60,14 +60,6 @@ private:
 
     // 内部数据流处理函数（稍后修改为遵循“命令→数据→上报”顺序）
     void flushPackage();
-    void audioDecodeLoop();
-    void videoDecodeLoop();
-
-    // 各模块的命令处理函数
-    void handleAudioDecCommand(const Command& cmd);
-    void handleVideoDecCommand(const Command& cmd);
-    void handleAudioRenderCommand(const Command& cmd);
-    void handleVideoRenderCommand(const Command& cmd);
 
     // 上报事件辅助函数
     void reportEvent(Event&& e);
@@ -106,9 +98,6 @@ private:
     // 状态机（新增）
     std::unique_ptr<StateMachine> stateMachine_;
 
-    std::thread audioThread_;
-    std::thread videoThread_;
-    std::thread audioRenderThread_;  // AudioOutput 内部已有线程，此处仅标识
 
     std::atomic<bool> abort_{false};
 };

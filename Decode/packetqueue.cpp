@@ -59,7 +59,14 @@ void PacketQueue::flush() noexcept {
     total_bytes_ = 0;
     ++serial_;
 
+    // 插入flush包，通知decoder刷新
+    PacketData flushPkt;
+    flushPkt.isFlush = true;
+    flushPkt.serial = serial_;
+    queue_.push_back(std::move(flushPkt));
+
     not_full_.notify_all();
+    not_empty_.notify_all();
 }
 
 void PacketQueue::close() noexcept {

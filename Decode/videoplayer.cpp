@@ -69,14 +69,19 @@ void VideoPlayer::start()
         SPDLOG_ERROR("audio decoder open failed");
         throw std::runtime_error("audio decoder open failed");
     }
+    audioDec_.setCommandQueue(&audioDecCmdQueue_);
+    audioDec_.setEventQueue(&eventQueue_);
+    audioDec_.setInputQueue(&audioPktQueue_);
+    audioDec_.setOutputQueue(&audioFifo_);
+    audioDec_.start();
 
 
     if (!videoDec_.open(demux_.videoStream())) {
         SPDLOG_ERROR("video decoder open failed");
         throw std::runtime_error("video decoder open failed");
     }
-    videoDec_.setPacketQueue(&videoPktQueue_);
-    videoDec_.setFrameQueue(&videoFrameQueue_);
+    videoDec_.setInputQueue(&videoPktQueue_);
+    videoDec_.setOutputQueue(&videoFrameQueue_);
     videoDec_.setCommandQueue(&videoDecCmdQueue_);
     videoDec_.setEventQueue(&eventQueue_);
     videoDec_.start();
@@ -86,8 +91,6 @@ void VideoPlayer::start()
 
     demux_.start();   // 🔥替代 demuxThread
 
-    audioThread_ = std::thread(&VideoPlayer::audioDecodeLoop, this);
-    videoThread_ = std::thread(&VideoPlayer::videoDecodeLoop, this);
 
     // 启动音频输出（内部有独立线程）
     audioOutput_.start();
@@ -106,6 +109,10 @@ void VideoPlayer::stop()
 
     // 首先停止状态机（它会下发停止命令）
     stateMachine_->stop();
+    // 等待线程退出
+    demux_.stop();   // 🔥关键
+    videoDec_.stop();
+    audioDec_.stop();
 
     // 关闭队列，唤醒所有阻塞线程
     videoPktQueue_.close();
@@ -119,10 +126,6 @@ void VideoPlayer::stop()
     audioRenderCmdQueue_.close();
     videoRenderCmdQueue_.close();
 
-    // 等待线程退出
-    demux_.stop();   // 🔥关键
-    videoDec_.stop();
-    audioDec_.stop();
 
     // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
     audioOutput_.stop();
@@ -188,62 +191,6 @@ void VideoPlayer::flushPackage() {
 
 // ---------- 命令处理 ----------
 
-void VideoPlayer::handleAudioDecCommand(const Command& cmd) {
-    // 类似 handleDemuxCommand，处理音频解码器相关命令
-    // 简化：仅处理 flush
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, CmdFlush>) {
-            const CmdFlush& cf = std::get<CmdFlush>(cmd);
-            SPDLOG_DEBUG("AudioDecoder flush with serial {}", cf.serial);
-            audioDec_.send(PacketData{});
-            // 上报排空完成
-            reportEvent(DecoderDrained{cf.serial});
-        }
-        else if constexpr (std::is_same_v<T, CmdPause>) {
-            // 暂停解码（暂不实现）
-        }
-        else {
-            // 忽略
-        }
-    }, cmd);
-}
-
-void VideoPlayer::handleVideoDecCommand(const Command& cmd) {
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, CmdFlush>) {
-            const CmdFlush& cf = std::get<CmdFlush>(cmd);
-            SPDLOG_DEBUG("VideoDecoder flush with serial {}", cf.serial);
-            videoDec_.send(PacketData{});
-            reportEvent(DecoderDrained{cf.serial});
-        }
-    }, cmd);
-}
-
-void VideoPlayer::handleAudioRenderCommand(const Command& cmd) {
-    std::visit([&](auto&& arg) {
-        using T = std::decay_t<decltype(arg)>;
-        if constexpr (std::is_same_v<T, CmdPause>) {
-            audioOutput_.audioPause(true);
-        }
-        else if constexpr (std::is_same_v<T, CmdResume>) {
-            audioOutput_.audioPause(false);
-        }
-        else if constexpr (std::is_same_v<T, CmdFlush>) {
-            const CmdFlush& cf = std::get<CmdFlush>(cmd);
-            audioOutput_.seek(cf.serial);
-        }
-        else if constexpr (std::is_same_v<T, CmdStop>) {
-            // 停止音频输出（由 stop 统一处理）
-        }
-    }, cmd);
-}
-
-void VideoPlayer::handleVideoRenderCommand(const Command& cmd) {
-    // 视频渲染命令（目前由 UI 线程处理，暂不实现）
-    SPDLOG_TRACE("VideoRender command: {}", commandName(cmd));
-}
 
 // ---------- 事件上报 ----------
 
@@ -255,147 +202,4 @@ void VideoPlayer::reportEvent(Event&& e) {
 
 // ---------- 线程循环（待改造，目前仅保留原有逻辑） ----------
 
-void VideoPlayer::audioDecodeLoop()
-{
-    while (!abort_) {
-        // 处理命令
-        while (auto cmd = audioDecCmdQueue_.try_pop()) {
-            handleAudioDecCommand(*cmd);
-        }
 
-        // 原有数据逻辑
-        PacketData data;
-        GetStatus status = audioPktQueue_.get(data, true);
-        if (status == GetStatus::Closed) {
-            audioDec_.send(PacketData{}); // flush decoder
-            // 排空解码器
-            while (!abort_) {
-                AudioBlock block;
-                DecodeResult ret = audioDec_.receive(block);
-                if (ret == DecodeResult::FrameReady) {
-                    block.serial = audioPktQueue_.serial(); // 使用当前serial
-                    if (!audioFifo_.push(std::move(block)))
-                        break;
-                    continue;
-                } else if (ret == DecodeResult::Drained) {
-                    break; // 排空完成
-                } else if (ret == DecodeResult::TryAgain) {
-                    continue;
-                } else {
-                    audioFifo_.close();
-                    return;
-                }
-            }
-            audioFifo_.close();
-            return;
-        }
-        if (status != GetStatus::Ok)
-            continue;
-        int pkt_serial = data.serial;
-        DecodeResult sret = audioDec_.send(data);
-        if (sret == DecodeResult::FatalError)
-            break;
-        while (!abort_) {
-            AudioBlock block;
-            DecodeResult ret = audioDec_.receive(block);
-            if (ret == DecodeResult::FrameReady) {
-                block.serial = pkt_serial;
-                if (block.serial != audioPktQueue_.serial())
-                    continue;
-                if (!audioFifo_.push(std::move(block)))
-                    break;
-                continue;
-            }
-            if (ret == DecodeResult::TryAgain)
-                break;
-            if (ret == DecodeResult::Drained)
-                break;
-            if (ret == DecodeResult::FatalError) {
-                audioFifo_.close();
-                return;
-            }
-        }
-    }
-    audioFifo_.close();
-}
-
-void VideoPlayer::videoDecodeLoop()
-{
-    int cur_serial = -1;
-    while (!abort_) {
-        // 处理命令
-        while (auto cmd = videoDecCmdQueue_.try_pop()) {
-            handleVideoDecCommand(*cmd);
-        }
-
-        // 原有数据逻辑
-        PacketData pkt;
-        GetStatus status = videoPktQueue_.get(pkt, true);
-        if (status == GetStatus::Closed) {
-            videoDec_.send(PacketData{}); // flush
-            while (!abort_) {
-                VideoFrame frame;
-                DecodeResult ret = videoDec_.receive(frame);
-                if (ret == DecodeResult::FrameReady) {
-                    frame.serial = cur_serial;
-                    if (!videoFrameQueue_.push(std::move(frame))) {
-                        videoFrameQueue_.close();
-                        return;
-                    }
-                    continue;
-                } else if (ret == DecodeResult::Drained) {
-                    break;
-                } else if (ret == DecodeResult::TryAgain) {
-                    continue;
-                } else {
-                    videoFrameQueue_.close();
-                    return;
-                }
-            }
-            videoFrameQueue_.close();
-            return;
-        }
-        else if (status == GetStatus::Ok) {
-            cur_serial = pkt.serial;
-            DecodeResult r = videoDec_.send(pkt);
-            if (r == DecodeResult::FatalError) {
-                videoFrameQueue_.close();
-                return;
-            }
-            if (r == DecodeResult::CodecError) {
-                continue;
-            }
-        }
-        else {
-            continue;
-        }
-
-        while (!abort_) {
-            VideoFrame frame;
-            DecodeResult ret = videoDec_.receive(frame);
-            switch (ret) {
-            case DecodeResult::FrameReady:
-                frame.serial = cur_serial;
-                if (!videoFrameQueue_.push(std::move(frame))) {
-                    videoFrameQueue_.close();
-                    return;
-                }
-                continue;
-
-            case DecodeResult::TryAgain:
-                break;
-
-            case DecodeResult::Drained:
-            case DecodeResult::Closed:
-            case DecodeResult::FatalError:
-                videoFrameQueue_.close();
-                return;
-
-            case DecodeResult::CodecError:
-                break;
-            }
-            break;
-        }
-    }
-    videoFrameQueue_.close();
-}

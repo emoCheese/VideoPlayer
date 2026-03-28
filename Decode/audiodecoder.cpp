@@ -221,3 +221,152 @@ void AudioDecoder::reset()
         avcodec_flush_buffers(codecCtx_);
     }
 }
+
+// ==================== 队列注入 ====================
+
+void AudioDecoder::setCommandQueue(CommandQueue* q) { cmdQ_ = q; }
+void AudioDecoder::setEventQueue(EventQueue* q) { eventQ_ = q; }
+void AudioDecoder::setInputQueue(PacketQueue* q) { inputQ_ = q; }
+void AudioDecoder::setOutputQueue(FrameQueue<AudioBlock>* q) { outputQ_ = q; }
+
+// ==================== 线程控制 ====================
+
+void AudioDecoder::start() {
+    if (running_) return;
+    running_ = true;
+    thread_ = std::thread(&AudioDecoder::run, this);
+}
+
+void AudioDecoder::stop() {
+    running_ = false;
+    // 关闭队列以唤醒阻塞
+    if (inputQ_) inputQ_->close();
+    if (outputQ_) outputQ_->close();
+
+    if (thread_.joinable())
+        thread_.join();
+}
+
+// ==================== 命令处理 ====================
+
+void AudioDecoder::handleCommand(const Command& cmd) {
+    std::visit([&](auto&& c) {
+        using T = std::decay_t<decltype(c)>;
+
+        if constexpr (std::is_same_v<T, CmdFlush>) {
+            const CmdFlush& cf = std::get<CmdFlush>(cmd);
+            SPDLOG_DEBUG("AudioDecoder flush with serial {}", cf.serial);
+            // 收到flush包时，会在run循环中处理，此处仅记录
+        }
+        else if constexpr (std::is_same_v<T, CmdPause>) {
+            paused_ = true;
+        }
+        else if constexpr (std::is_same_v<T, CmdResume>) {
+            paused_ = false;
+        }
+        else if constexpr (std::is_same_v<T, CmdStop>) {
+            running_ = false;
+            if (inputQ_) inputQ_->close();
+            if (outputQ_) outputQ_->close();
+        }
+        else if constexpr (std::is_same_v<T, CmdSetSpeed>) {
+            const CmdSetSpeed& cs = std::get<CmdSetSpeed>(cmd);
+            speed_ = cs.rate;
+        }
+        // 其他命令忽略
+    }, cmd);
+}
+
+// ==================== 线程主循环 ====================
+
+void AudioDecoder::run() {
+    SPDLOG_INFO("AudioDecoder thread start");
+
+    while (running_) {
+        // 1️⃣ 处理命令
+        while (cmdQ_) {
+            auto cmd = cmdQ_->try_pop();
+            if (!cmd) break;
+            handleCommand(*cmd);
+        }
+
+        // 2️⃣ 如果暂停，等待
+        if (paused_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
+        // 3️⃣ 从输入队列取包（非阻塞）
+        PacketData pkt;
+        GetStatus status = inputQ_ ? inputQ_->get(pkt, false) : GetStatus::Closed;
+        if (status == GetStatus::Closed) {
+            // 队列已关闭，退出循环
+            break;
+        }
+        if (status == GetStatus::Empty) {
+            // 无数据，短暂休眠后继续
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            continue;
+        }
+
+        // 4️⃣ 处理 flush 包
+        if (pkt.isFlush) {
+            SPDLOG_DEBUG("AudioDecoder received flush packet, serial {}", pkt.serial);
+            avcodec_flush_buffers(codecCtx_);
+            currentSerial_ = pkt.serial;
+            continue;
+        }
+
+        // 5️⃣ 检查 serial 是否匹配
+        if (pkt.serial != currentSerial_) {
+            // 丢弃旧serial的包
+            continue;
+        }
+
+        // 6️⃣ 发送给解码器
+        DecodeResult sret = send(pkt);
+        if (sret == DecodeResult::FatalError || sret == DecodeResult::Closed) {
+            SPDLOG_ERROR("AudioDecoder send fatal error, stopping");
+            if (eventQ_) eventQ_->push(DecoderError{});
+            break;
+        }
+
+        // 7️⃣ 循环接收块直到EAGAIN
+        while (running_ && !paused_) {
+            AudioBlock block;
+            DecodeResult rret = receive(block);
+            if (rret == DecodeResult::FrameReady) {
+                block.serial = currentSerial_;
+                // 应用倍速播放
+                if (speed_ != 1.0) {
+                    // 调整时长和采样数？实际重采样在AudioOutput中处理
+                    // 这里仅标记速度值（暂不实现）
+                }
+                if (outputQ_ && !outputQ_->push(std::move(block))) {
+                    // 输出队列满，丢弃块（或等待）
+                    SPDLOG_WARN("AudioDecoder output queue full, dropping block");
+                }
+                continue;
+            } else if (rret == DecodeResult::TryAgain) {
+                break; // 等待下一个包
+            } else if (rret == DecodeResult::Drained) {
+                // 解码器已排空，上报事件
+                if (eventQ_) eventQ_->push(DecoderDrained{currentSerial_});
+                break;
+            } else if (rret == DecodeResult::FatalError || rret == DecodeResult::CodecError) {
+                SPDLOG_ERROR("AudioDecoder receive error");
+                if (eventQ_) eventQ_->push(DecoderError{});
+                running_ = false;
+                break;
+            } else {
+                // 其他情况（Closed）退出
+                break;
+            }
+        }
+    }
+
+    // 收尾
+    if (inputQ_) inputQ_->close();
+    if (outputQ_) outputQ_->close();
+    SPDLOG_INFO("AudioDecoder thread exit");
+}

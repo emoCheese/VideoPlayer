@@ -31,8 +31,14 @@ public:
     void setCommandQueue(CommandQueue* q);
     void setEventQueue(EventQueue* q);
 
-    auto audioStream() const { return 1; }
-    auto videoStream() const { return 1; }
+
+    inline const AVStream *videoStream() const { return fmt_ ? fmt_->streams[m_videoStreamIndex] : nullptr; }
+
+    inline const AVStream *audioStream() const { return fmt_ ? fmt_->streams[m_audioStreamIndex] : nullptr; }
+
+
+    inline int getVideoStreamIndex() const { return m_videoStreamIndex; };
+    inline int getAudioStreamIndex() const { return m_audioStreamIndex; };
 
 private:
     void run();                    // 线程主循环
@@ -45,6 +51,9 @@ private:
     AVFormatContext* fmt_ = nullptr;
     AVPacket* pkt_ = nullptr;
 
+    int m_videoStreamIndex = -1;
+    int m_audioStreamIndex = -1;
+
     PacketQueue* videoQ_ = nullptr;
     PacketQueue* audioQ_ = nullptr;
 
@@ -53,4 +62,5 @@ private:
 
     std::thread thread_;
     std::atomic<bool> running_{false};
+    std::atomic<bool> paused_{false};
 };

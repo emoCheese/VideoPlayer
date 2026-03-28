@@ -11,14 +11,51 @@ Demuxer::~Demuxer() {
 bool Demuxer::open(std::string_view url) {
     url_ = url;
 
-    if (avformat_open_input(&fmt_, url_.c_str(), nullptr, nullptr) < 0)
-        return false;
+    close();  // 清理旧资源
 
-    if (avformat_find_stream_info(fmt_, nullptr) < 0)
+    //  打开输入
+    if (avformat_open_input(&fmt_, url_.c_str(), nullptr, nullptr) < 0) {
+        SPDLOG_ERROR("avformat_open_input failed");
         return false;
+    }
 
+    // 读取流信息
+    if (avformat_find_stream_info(fmt_, nullptr) < 0) {
+        SPDLOG_ERROR("avformat_find_stream_info failed");
+        return false;
+    }
+
+    // 查找音视频流
+    m_videoStreamIndex = -1;
+    m_audioStreamIndex = -1;
+
+    for (unsigned int i = 0; i < fmt_->nb_streams; ++i) {
+        auto* codecpar = fmt_->streams[i]->codecpar;
+
+        if (codecpar->codec_type == AVMEDIA_TYPE_VIDEO && m_videoStreamIndex < 0) {
+            m_videoStreamIndex = i;
+        }
+        else if (codecpar->codec_type == AVMEDIA_TYPE_AUDIO && m_audioStreamIndex < 0) {
+            m_audioStreamIndex = i;
+        }
+    }
+
+    if (m_videoStreamIndex < 0 && m_audioStreamIndex < 0) {
+        SPDLOG_ERROR("No audio/video stream found");
+        return false;
+    }
+
+    // 4️⃣ 分配 packet
     pkt_ = av_packet_alloc();
-    return pkt_ != nullptr;
+    if (!pkt_) {
+        SPDLOG_ERROR("av_packet_alloc failed");
+        return false;
+    }
+
+    SPDLOG_INFO("Open success: videoStream={}, audioStream={}",
+                m_videoStreamIndex, m_audioStreamIndex);
+
+    return true;
 }
 
 void Demuxer::close() {
@@ -65,15 +102,23 @@ void Demuxer::handleCommand(const Command& cmd) {
             int64_t ts = static_cast<int64_t>(c.seconds * AV_TIME_BASE);
             av_seek_frame(fmt_, -1, ts, AVSEEK_FLAG_BACKWARD);
 
-            videoQ_->start(); // serial++
-            audioQ_->start();
+            // 刷新队列，插入flush包
+            if (videoQ_) videoQ_->flush();
+            if (audioQ_) audioQ_->flush();
 
-            if (eventQ_)
-                eventQ_->push(DecoderDrained{c.serial});
+            // 注意：不在此上报DecoderDrained，由decoder在drain后上报
         }
-
+        else if constexpr (std::is_same_v<T, CmdPause>) {
+            paused_ = true;
+        }
+        else if constexpr (std::is_same_v<T, CmdResume>) {
+            paused_ = false;
+        }
         else if constexpr (std::is_same_v<T, CmdStop>) {
             running_ = false;
+            // 关闭队列以唤醒阻塞的消费者
+            if (videoQ_) videoQ_->close();
+            if (audioQ_) audioQ_->close();
         }
 
     }, cmd);
@@ -106,6 +151,12 @@ void Demuxer::run() {
             handleCommand(*cmd);
         }
 
+        // 如果暂停，等待一段时间后继续
+        if (paused_) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(5));
+            continue;
+        }
+
         // 2️⃣ 读数据
         PacketData data;
         if (!readFrame(data)) {
@@ -116,14 +167,15 @@ void Demuxer::run() {
 
         if (!data.pkt) continue;
 
-        // 3️⃣ 分发
-        if (videoQ_ && data.streamIndex == videoQ_->serial()) {
+        // 分发：根据流索引决定放入视频队列还是音频队列
+        if (videoQ_ && data.streamIndex == getVideoStreamIndex()) {
             data.serial = videoQ_->serial();
             videoQ_->put(std::move(data), true);
-        } else if (audioQ_) {
+        } else if (audioQ_ && data.streamIndex == getAudioStreamIndex()) {
             data.serial = audioQ_->serial();
             audioQ_->put(std::move(data), true);
         }
+        // 忽略其他流（如字幕）
     }
 
     // 收尾
