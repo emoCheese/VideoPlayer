@@ -4,9 +4,10 @@
 StateMachine::StateMachine(EventQueue& eventQ,
                            CommandQueue& demuxCmdQ,
                            CommandQueue& audioDecCmdQ,
-                           CommandQueue& videoDecCmdQ,
-                           CommandQueue& audioRenderCmdQ,
-                           CommandQueue& videoRenderCmdQ)
+                           CommandQueue& videoDecCmdQ
+                           // CommandQueue& audioRenderCmdQ,
+                           // CommandQueue& videoRenderCmdQ
+                           )
     : eventQ_(eventQ)
     , demuxCmdQ_(demuxCmdQ)
     , audioDecCmdQ_(audioDecCmdQ)

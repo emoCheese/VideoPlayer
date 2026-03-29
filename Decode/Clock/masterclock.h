@@ -32,6 +32,8 @@ public:
 
     MasterClock(FrameQueue<VideoFrame>& queue);
 
+    ~MasterClock();
+
     void start(Callback cb);
     void start(CallbackPtr cb);
     void stop();

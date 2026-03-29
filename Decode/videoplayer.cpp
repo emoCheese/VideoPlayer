@@ -25,17 +25,13 @@ VideoPlayer::VideoPlayer(const std::string &u)
     , demuxCmdQueue_(64)
     , audioDecCmdQueue_(64)
     , videoDecCmdQueue_(64)
-    , audioRenderCmdQueue_(64)
-    , videoRenderCmdQueue_(64)
 {
     // 创建状态机，传入队列引用
     stateMachine_ = std::make_unique<StateMachine>(
         eventQueue_,
         demuxCmdQueue_,
         audioDecCmdQueue_,
-        videoDecCmdQueue_,
-        audioRenderCmdQueue_,
-        videoRenderCmdQueue_
+        videoDecCmdQueue_
     );
     SPDLOG_DEBUG("VideoPlayer constructed with state machine");
 
@@ -110,8 +106,8 @@ void VideoPlayer::stop()
 
     // 首先停止状态机（它会下发停止命令）
     stateMachine_->stop();
-    // 等待线程退出
 
+    // 等待线程退出
     demux_.stop();   // 🔥关键
     videoDec_.stop();
     audioDec_.stop();
@@ -125,8 +121,6 @@ void VideoPlayer::stop()
     demuxCmdQueue_.close();
     audioDecCmdQueue_.close();
     videoDecCmdQueue_.close();
-    audioRenderCmdQueue_.close();
-    videoRenderCmdQueue_.close();
 
     // 停止并等待时钟线程退出，避免在析构/释放期间回调到已销毁的 UI
     audioOutput_.stop();
@@ -194,17 +188,11 @@ void VideoPlayer::flushPackage() {
     audioPktQueue_.put(std::move(aFlush), true);
 }
 
-// ---------- 命令处理 ----------
-
 
 // ---------- 事件上报 ----------
-
 void VideoPlayer::reportEvent(Event&& e) {
     if (!eventQueue_.try_push(std::move(e))) {
         SPDLOG_WARN("Event queue full, dropping event: {}", eventName(e));
     }
 }
-
-// ---------- 线程循环（待改造，目前仅保留原有逻辑） ----------
-
 

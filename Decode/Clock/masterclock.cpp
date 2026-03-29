@@ -8,6 +8,11 @@ MasterClock::MasterClock(FrameQueue<VideoFrame>& queue)
 {
 }
 
+MasterClock::~MasterClock()
+{
+    stop();
+}
+
 void MasterClock::start(Callback cb)
 {
     callback_ = cb;

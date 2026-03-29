@@ -57,9 +57,10 @@ public:
     StateMachine(EventQueue& eventQ,
                  CommandQueue& demuxCmdQ,
                  CommandQueue& audioDecCmdQ,
-                 CommandQueue& videoDecCmdQ,
-                 CommandQueue& audioRenderCmdQ,
-                 CommandQueue& videoRenderCmdQ);
+                 CommandQueue& videoDecCmdQ
+                 // CommandQueue& audioRenderCmdQ,
+                 // CommandQueue& videoRenderCmdQ
+                 );
     
     ~StateMachine();
     

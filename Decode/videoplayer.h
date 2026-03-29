@@ -92,10 +92,8 @@ private:
     CommandQueue demuxCmdQueue_;
     CommandQueue audioDecCmdQueue_;
     CommandQueue videoDecCmdQueue_;
-    CommandQueue audioRenderCmdQueue_;
-    CommandQueue videoRenderCmdQueue_;
 
-    // 状态机（新增）
+    // 状态机
     std::unique_ptr<StateMachine> stateMachine_;
 
     std::atomic<bool> abort_{false};

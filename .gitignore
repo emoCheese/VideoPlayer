@@ -85,5 +85,5 @@ CMakeLists.txt.user*
 .cache/*
 /.cache/*
 
-
+.cache/
 plan/

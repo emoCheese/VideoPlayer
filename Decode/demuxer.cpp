@@ -88,7 +88,7 @@ void Demuxer::start() {
 }
 
 void Demuxer::stop() {
-    if (!running_.exchange(false)) return;
+    running_ = false;
 
     if (thread_.joinable())
         thread_.join();

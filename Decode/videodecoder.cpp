@@ -1,7 +1,11 @@
 #include "videodecoder.h"
 #include <spdlog/spdlog.h>
 
-VideoDecoder::~VideoDecoder() { close(); }
+VideoDecoder::~VideoDecoder()
+{
+    stop();
+    close();
+}
 
 bool VideoDecoder::open(const AVStream* stream)
 {
@@ -95,7 +99,7 @@ void VideoDecoder::start() {
 }
 
 void VideoDecoder::stop() {
-    if (!running_.exchange(false)) return;
+    running_ = false;
 
     // 关闭队列以唤醒阻塞
     if (inputQ_) inputQ_->close();
