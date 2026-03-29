@@ -200,7 +200,7 @@ void VideoDecoder::run() {
                 break; // 等待下一个包
             } else if (rret == DecodeResult::Drained) {
                 // 解码器已排空，上报事件
-                if (eventQ_) eventQ_->push(DecoderDrained{currentSerial_});
+                if (eventQ_) eventQ_->push(DecoderDrained{StreamType::Video, currentSerial_});
                 break;
             } else if (rret == DecodeResult::FatalError || rret == DecodeResult::CodecError) {
                 SPDLOG_ERROR("VideoDecoder receive error");

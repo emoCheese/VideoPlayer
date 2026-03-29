@@ -28,6 +28,14 @@ struct Error {           // 错误状态
     std::string message;
 };
 
+/**
+ * @brief Buffering 数据流暂时无法满足“连续播放”的状态
+ * 音频/视频任一关键队列无法持续供给
+ * 或 seek 后还没准备好首帧
+ * 或 网络/IO暂时断供
+ */
+struct Buffering {};
+
 using State = std::variant<
     Idle,
     Playing,
@@ -79,7 +87,7 @@ private:
     State handle(const Stopped& s, const Event& e);
     State handle(const Ended& s, const Event& e);
     State handle(const Error& s, const Event& e);
-    
+
     // 辅助函数：下发命令到指定模块
     void dispatch(const Command& cmd);
     void dispatchToDemux(const Command& cmd);

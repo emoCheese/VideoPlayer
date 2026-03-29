@@ -30,18 +30,6 @@ struct CmdSetSpeed {
     double rate;         // 播放速度因子（1.0 为正常）
 };
 
-// 模块特定命令（可选）
-struct CmdDemuxSeek {
-    double seconds;
-    int serial;
-};
-struct CmdDecoderFlush {
-    int serial;
-};
-struct CmdRenderFlush {
-    int serial;
-};
-
 /**
  * @brief 命令 variant，包含所有可能的命令类型
  */
@@ -52,10 +40,7 @@ using Command = std::variant<
     CmdStop,
     CmdSeek,
     CmdFlush,
-    CmdSetSpeed,
-    CmdDemuxSeek,
-    CmdDecoderFlush,
-    CmdRenderFlush
+    CmdSetSpeed
 >;
 
 /**
@@ -71,9 +56,6 @@ inline const char* commandName(const Command& c) {
         else if constexpr (std::is_same_v<T, CmdSeek>) return "CmdSeek";
         else if constexpr (std::is_same_v<T, CmdFlush>) return "CmdFlush";
         else if constexpr (std::is_same_v<T, CmdSetSpeed>) return "CmdSetSpeed";
-        else if constexpr (std::is_same_v<T, CmdDemuxSeek>) return "CmdDemuxSeek";
-        else if constexpr (std::is_same_v<T, CmdDecoderFlush>) return "CmdDecoderFlush";
-        else if constexpr (std::is_same_v<T, CmdRenderFlush>) return "CmdRenderFlush";
         else return "Unknown";
     }, c);
 }
